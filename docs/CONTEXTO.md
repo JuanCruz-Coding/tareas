@@ -124,11 +124,23 @@ probado contra un Supabase simulado que aplica los mismos controles que `schema.
   `/auth/v1/settings`);
 - ~~publicar~~: publicado el 2026-09-23. En el sitio real: login a la vista, sin errores de
   consola, service worker `tareas-v2` con 13 archivos guardados y la app instalable;
-- después del primer login, verificar desde la base que se subieron las tareas.
+- ~~después del primer login, verificar desde la base que se subieron las tareas~~: verificado
+  el 2026-09-23, llegaron las 8, todas a nombre del usuario, con horas, recurrencias y
+  delegados intactos, y las tres claves de `config`;
+- **que Claude pueda escribir**: ver el párrafo siguiente. Hasta entonces, el tiempo real con
+  una tarea cargada por Claude no se probó contra la base real (sí contra el simulado).
 
-**El MCP que Claude ya tenía conectado llega a `app-tareas`**, aunque `list_organizations` no
-mostraba "Juanchi's Org": `get_project` con el ref respondió igual. El servidor del proyecto que
-se agregó en `.mcp.json` sobra por ahora; queda por si se usa Claude Code desde otra cuenta.
+**El conector de Supabase que Claude tiene en claude.ai es de solo lectura para el SQL.** Llega
+a `app-tareas` (aunque `list_organizations` no mostraba "Juanchi's Org", `get_project` con el ref
+respondió), y con él se leen los pendientes, pero un `insert` falla con `cannot execute INSERT
+in a read-only transaction`. El esquema se pudo aplicar porque `apply_migration` va por otro
+camino. **No usar `apply_migration` para cargar tareas**: quedarían en el historial de
+migraciones, y al reconstruir la base desde ahí (una rama, por ejemplo) el insert fallaría,
+porque no habría usuario al que asignarle la tarea.
+
+~~El servidor del proyecto que se agregó en `.mcp.json` sobra por ahora.~~ Se corrigió el mismo
+día: **es el que permite escribir**, porque su URL no lleva `read_only`. Hay que autenticarlo
+una vez con `claude /mcp` desde una terminal, en la carpeta del proyecto.
 
 **Las tareas locales que no se suben al migrar no tienen pantalla para recuperarse.** Quedan
 en `tareasApp.respaldo` de ese navegador. Si hace falta, se agrega un botón en Ajustes.
