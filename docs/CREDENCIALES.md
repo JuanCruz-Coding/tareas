@@ -43,9 +43,10 @@ Si se pierde: se resetea desde el panel; no rompe nada, porque la app no la usa.
 
 ## Acceso de Claude al proyecto (MCP de Supabase)
 
-El servidor MCP del proyecto está en `.mcp.json`, que solo tiene el ref del proyecto y ningún
-secreto. La autorización la da una sesión OAuth en el navegador (`claude /mcp`) y queda
-guardada en la configuración local de Claude Code, fuera del repositorio.
+Hoy Claude entra con el conector de Supabase de claude.ai, que ya tiene acceso a "Juanchi's
+Org" (verificado el 2026-09-23). Además está el servidor MCP del proyecto en `.mcp.json`, que
+solo tiene el ref y ningún secreto; para usarlo hay que autenticarlo con `claude /mcp`, y la
+autorización queda en la configuración local de Claude Code, fuera del repositorio.
 Si se pierde: se vuelve a autenticar con `claude /mcp`. Mientras tanto Claude no puede cargar
 ni leer tareas; la app sigue igual.
 

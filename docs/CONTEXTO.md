@@ -108,18 +108,24 @@ la recurrencia, exportar/importar, el modo oscuro y el login.
 
 ## Pendientes y bloqueos
 
-**Supabase no está conectado todavía** (2026-09-23). Falta la clave publishable del proyecto
-`app-tareas` en `SUPABASE_CLAVE`, y sin ella no se pudo probar contra la base real: las pruebas
-fueron contra un Supabase simulado que aplica los mismos controles que `schema.sql` (migración,
-eco del tiempo real, sin conexión, segundo dispositivo, importar, borrar todo, cerrar sesión).
-Por eso **el cambio está commiteado pero no publicado**: publicarlo sin clave dejaría el sitio
-sin login y solo en el navegador. Cuando esté la clave, falta además:
+**Supabase está listo pero falta el usuario** (2026-09-23). `schema.sql` se aplicó por el MCP
+como migración `esquema_inicial`, y se verificó: RLS prendido en las dos tablas, `anon` sin
+ningún permiso (la API responde 401 a leer y a escribir sin sesión), las cuatro triggers, las
+dos tablas en Realtime, y cero avisos de seguridad del propio Supabase. La clave publishable ya
+está en `SUPABASE_CLAVE`, y contra la base real la app carga y el login rechaza credenciales
+inválidas.
 
-- correr `schema.sql` en el proyecto;
+Lo que **no** se pudo probar contra la base real es el camino con sesión (migración, tiempo
+real, sincronización), porque el usuario de Auth no existe y lo tiene que crear el dueño: está
+probado contra un Supabase simulado que aplica los mismos controles que `schema.sql`. Falta:
+
 - crear el usuario en Authentication → Users y apagar las altas nuevas;
-- que Claude tenga acceso al proyecto: el MCP conectado a la sesión del 2026-09-23 solo veía
-  "JuanCruz-Coding's Org". Se agregó el servidor MCP del proyecto en `.mcp.json`, pero
-  hay que autenticarlo con `claude /mcp` desde una terminal.
+- publicar (el commit está hecho y sin subir: publicado sin usuario, nadie podría entrar);
+- después del primer login, verificar desde la base que se subieron las tareas.
+
+**El MCP que Claude ya tenía conectado llega a `app-tareas`**, aunque `list_organizations` no
+mostraba "Juanchi's Org": `get_project` con el ref respondió igual. El servidor del proyecto que
+se agregó en `.mcp.json` sobra por ahora; queda por si se usa Claude Code desde otra cuenta.
 
 **Las tareas locales que no se suben al migrar no tienen pantalla para recuperarse.** Quedan
 en `tareasApp.respaldo` de ese navegador. Si hace falta, se agrega un botón en Ajustes.
