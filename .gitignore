@@ -1,0 +1,9 @@
+# Nunca subir secretos
+.env*
+*.key
+*.pem
+*.crt
+*.p12
+
+# Exportaciones de la app: traen todas las tareas
+tareas-*.json

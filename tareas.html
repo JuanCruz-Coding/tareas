@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="es-AR" data-bs-theme="light">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover: en el iPhone la app ocupa también la zona del notch; los márgenes se corrigen con env(safe-area-inset-*) -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- "default" y no "black-translucent": con el translúcido el reloj sale en blanco y no se lee sobre el fondo claro -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Tareas">
+<meta name="format-detection" content="telephone=no">
+<title>Tareas</title>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="apple-touch-icon.png">
+
+<!-- Librerías: Bootstrap (estilos, modales), Bootstrap Icons y FullCalendar para el calendario -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+<style>
+/* =========================================================
+   Tokens de color. Azul = Mías, naranja = Delegadas,
+   gris = Algún día, violeta = Bandeja de entrada.
+   ========================================================= */
+:root {
+  --c-mias: #0a84ff;
+  --c-delegadas: #ff9500;
+  --c-algundia: #8e8e93;
+  --c-bandeja: #5e5ce6;
+  --c-rojo: #ff3b30;
+  --c-verde: #34c759;
+  --fondo: #f2f2f7;
+  --tarjeta: #ffffff;
+  --separador: rgba(60, 60, 67, .18);
+  --texto2: #6c6c70;
+  --barra: rgba(249, 249, 249, .9);
+  --seg-fondo: rgba(118, 118, 128, .12);
+}
+[data-bs-theme="dark"] {
+  --c-delegadas: #ff9f0a;
+  --c-algundia: #98989d;
+  --c-bandeja: #7d7aff;
+  --c-rojo: #ff453a;
+  --c-verde: #30d158;
+  --fondo: #000000;
+  --tarjeta: #1c1c1e;
+  --separador: rgba(84, 84, 88, .65);
+  --texto2: #98989f;
+  --barra: rgba(22, 22, 24, .9);
+  --seg-fondo: rgba(118, 118, 128, .24);
+}
+
+/* ---------- Base ---------- */
+html, body { overflow-x: hidden; max-width: 100%; }
+body {
+  background: var(--fondo);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+}
+button { -webkit-user-select: none; user-select: none; }
+.min-w-0 { min-width: 0; }
+.text-secundario { color: var(--texto2); }
+
+/* ---------- Estructura: sidebar en desktop, tabs abajo en móvil ---------- */
+.app { display: flex; min-height: 100dvh; }
+.sidebar {
+  width: 240px; flex-shrink: 0; position: sticky; top: 0; height: 100dvh;
+  border-right: .5px solid var(--separador); background: var(--barra);
+  padding: 24px 12px; flex-direction: column; gap: 4px;
+}
+.sidebar .marca { font-weight: 700; font-size: 20px; padding: 0 12px 16px; display: flex; gap: 8px; align-items: center; }
+.sidebar .marca i { color: var(--c-mias); }
+.item-lateral {
+  display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px;
+  border: 0; border-radius: 10px; background: transparent; color: inherit; font-size: 16px; text-align: left; width: 100%;
+}
+.item-lateral i { font-size: 19px; color: var(--c-mias); width: 22px; text-align: center; }
+.item-lateral:hover { background: var(--seg-fondo); }
+.item-lateral.activo { background: var(--c-mias); color: #fff; }
+.item-lateral.activo i { color: #fff; }
+.sidebar hr { border-color: var(--separador); opacity: 1; margin: 12px 4px; }
+
+main {
+  flex: 1; min-width: 0; width: 100%; max-width: 760px; margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 8px) 16px calc(150px + env(safe-area-inset-bottom));
+}
+@media (min-width: 992px) { main { padding: 24px 32px 120px; } }
+
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1030; display: flex;
+  background: var(--barra); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  border-top: .5px solid var(--separador); padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar button {
+  flex: 1; min-height: 54px; border: 0; background: none; color: var(--texto2);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 11px; position: relative;
+}
+.tabbar button i { font-size: 23px; line-height: 1; }
+.tabbar button.activo { color: var(--c-mias); }
+.insignia {
+  background: var(--c-rojo); color: #fff; border-radius: 10px; font-size: 11px; font-weight: 600;
+  min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center;
+}
+.tabbar .insignia { position: absolute; top: 4px; left: calc(50% + 6px); }
+.item-lateral .insignia { margin-left: auto; }
+
+/* Botón + flotante */
+.fab {
+  position: fixed; right: 18px; bottom: calc(70px + env(safe-area-inset-bottom)); z-index: 1031;
+  width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--c-mias); color: #fff; font-size: 30px;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 20px rgba(10, 132, 255, .45);
+}
+.fab:active { transform: scale(.94); }
+@media (min-width: 992px) { .fab { bottom: 32px; right: 32px; } }
+
+/* ---------- Encabezados ---------- */
+.cabecera { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 10px 0 12px; }
+.cabecera h1 { font-size: 34px; font-weight: 700; margin: 0; letter-spacing: .2px; }
+.cabecera-sub { color: var(--texto2); font-size: 15px; font-weight: 500; }
+.btn-icono {
+  width: 44px; height: 44px; border-radius: 50%; border: 0; background: transparent; color: var(--c-mias);
+  font-size: 22px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.btn-icono:hover { background: var(--seg-fondo); }
+.seccion {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .3px; color: var(--texto2); font-weight: 600;
+  margin: 24px 4px 7px; display: flex; align-items: center; gap: 6px;
+}
+.seccion .cuenta { margin-left: auto; font-weight: 500; }
+.ayuda { font-size: 13px; color: var(--texto2); margin: -2px 4px 8px; }
+
+/* ---------- Listas agrupadas estilo iOS ---------- */
+.grupo { background: var(--tarjeta); border-radius: 12px; overflow: hidden; }
+.grupo > * + * { border-top: .5px solid var(--separador); }
+.vacio { background: var(--tarjeta); border-radius: 12px; padding: 16px; color: var(--texto2); font-size: 15px; }
+.vacio strong { color: var(--bs-body-color); font-weight: 600; display: block; margin-bottom: 2px; }
+
+/* Fila de tarea: el contenido se desliza a la derecha para completar */
+.fila { position: relative; overflow: hidden; }
+.fila-fondo {
+  position: absolute; inset: 0; background: var(--c-verde); color: #fff;
+  display: none; align-items: center; padding-left: 20px; font-size: 26px;
+}
+.fila.deslizando .fila-fondo { display: flex; }   /* solo se ve mientras se desliza */
+.fila-cont {
+  position: relative; background: var(--tarjeta); display: flex; align-items: center; gap: 2px;
+  min-height: 56px; padding: 6px 14px 6px 4px; transition: transform .2s ease; touch-action: pan-y;
+}
+.fila[draggable="true"] .fila-texto { cursor: grab; }
+.check {
+  width: 44px; height: 44px; flex-shrink: 0; border: 0; background: none; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.check span {
+  width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--c);
+  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 17px; transition: background .15s;
+}
+.check span i { opacity: 0; }
+.check:hover span { background: color-mix(in srgb, var(--c) 18%, transparent); }
+.completada .check span { background: var(--c); }
+.completada .check span i { opacity: 1; }
+.fila-texto { flex: 1; min-width: 0; cursor: pointer; padding: 4px 0; }
+.fila-titulo { font-size: 17px; line-height: 1.28; overflow-wrap: anywhere; }
+.completada .fila-titulo { color: var(--texto2); text-decoration: line-through; }
+.fila-meta { font-size: 13px; color: var(--texto2); display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 2px; }
+.fila-meta i { margin-right: 2px; }
+.vencida { color: var(--c-rojo) !important; font-weight: 500; }
+.es-vencida .fila-titulo { color: var(--c-rojo); }
+.delegado { color: var(--c-delegadas); font-weight: 500; }
+.prioridad-alta { color: var(--c-rojo); font-size: 14px; }
+.prioridad-baja { color: var(--texto2); font-size: 14px; }
+
+/* ---------- Tarjeta del repaso ---------- */
+.tarjeta-repaso {
+  width: 100%; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 14px;
+  background: var(--tarjeta); border: 0; border-radius: 12px; color: inherit; text-align: left;
+}
+.circ {
+  width: 32px; height: 32px; border-radius: 50%; background: var(--c); color: #fff; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+}
+.aviso-naranja { color: var(--c-delegadas); }
+
+/* ---------- Tres para hoy ---------- */
+.slots { display: grid; gap: 8px; }
+.slot {
+  display: flex; align-items: center; min-height: 58px; width: 100%; padding: 6px 6px 6px 10px;
+  background: var(--tarjeta); border: 2px solid transparent; border-radius: 12px; color: inherit; text-align: left;
+}
+.slot.vacio { background: transparent; border: 2px dashed var(--separador); color: var(--texto2); font-size: 16px; }
+.slot.sobre { border: 2px solid var(--c-mias); background: color-mix(in srgb, var(--c-mias) 10%, transparent); }
+.slot-num {
+  width: 28px; height: 28px; border-radius: 50%; background: var(--c-mias); color: #fff; font-weight: 700; font-size: 14px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-right: 4px;
+}
+.slot.vacio .slot-num { background: var(--seg-fondo); color: var(--texto2); }
+.slot.hecho .slot-num { background: var(--c-verde); }
+.slot.hecho .fila-titulo { text-decoration: line-through; color: var(--texto2); }
+
+/* ---------- Listas ---------- */
+.tarjetas-listas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (min-width: 768px) { .tarjetas-listas { grid-template-columns: repeat(4, 1fr); } }
+.tarjeta-lista {
+  background: var(--tarjeta); border: 2px solid transparent; border-radius: 12px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px; color: inherit; text-align: left; min-height: 80px; min-width: 0;
+}
+.tarjeta-lista.activa { border-color: var(--c); }
+.tarjeta-lista .cuenta { font-size: 24px; font-weight: 700; margin-left: auto; line-height: 1; }
+.tarjeta-lista .nombre { font-weight: 600; color: var(--texto2); font-size: 15px; overflow-wrap: anywhere; }
+.titulo-lista { font-size: 24px; font-weight: 700; margin: 22px 4px 8px; }
+details.completadas { margin-top: 18px; }
+details.completadas summary {
+  min-height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 4px; color: var(--c-mias);
+  font-weight: 500; list-style: none; cursor: pointer;
+}
+details.completadas summary::-webkit-details-marker { display: none; }
+details.completadas summary::before { content: "\F285"; font-family: "bootstrap-icons"; transition: transform .2s; }
+details.completadas[open] summary::before { transform: rotate(90deg); }
+
+/* ---------- Calendario (FullCalendar reconfigurado) ---------- */
+#cal { background: var(--tarjeta); border-radius: 12px; padding: 8px 4px 4px; }
+.fc {
+  --fc-border-color: var(--separador);
+  --fc-page-bg-color: var(--tarjeta);
+  --fc-neutral-bg-color: transparent;
+  --fc-today-bg-color: transparent;
+  --fc-button-bg-color: transparent;
+  --fc-button-border-color: transparent;
+  --fc-button-text-color: var(--c-mias);
+  --fc-button-hover-bg-color: var(--seg-fondo);
+  --fc-button-hover-border-color: transparent;
+  --fc-button-active-bg-color: var(--seg-fondo);
+  --fc-button-active-border-color: transparent;
+  font-size: 14px;
+}
+.fc .fc-toolbar { gap: 4px; }
+.fc .fc-toolbar.fc-header-toolbar { margin-bottom: 6px; }
+.fc .fc-toolbar.fc-footer-toolbar { margin-top: 6px; }
+.fc .fc-toolbar-title { font-size: 18px; font-weight: 600; }
+.fc .fc-toolbar-title::first-letter { text-transform: uppercase; }   /* "Septiembre de 2026", no "Septiembre De 2026" */
+.fc .fc-button { min-height: 44px; min-width: 44px; font-weight: 500; box-shadow: none !important; font-size: 15px; }
+.fc .fc-button-primary:not(:disabled).fc-button-active { color: var(--c-mias); font-weight: 600; }
+.fc .fc-button-primary:disabled { color: var(--texto2); }
+.fc-theme-standard .fc-scrollgrid { border: 0; }
+.fc-theme-standard td, .fc-theme-standard th { border-left: 0; border-right: 0; }
+.fc .fc-col-header-cell { border-bottom: 0; }
+.fc .fc-col-header-cell-cushion { color: var(--texto2); font-size: 12px; font-weight: 600; text-transform: uppercase; text-decoration: none; }
+.fc .fc-daygrid-day { cursor: pointer; }
+.fc .fc-daygrid-day-frame { min-height: 54px; }
+.fc .fc-daygrid-day-top { flex-direction: row; justify-content: center; }
+.fc .fc-daygrid-day-number {
+  color: inherit; text-decoration: none; font-size: 15px; width: 28px; height: 28px; padding: 0; margin-top: 3px;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
+}
+.fc .fc-day-other .fc-daygrid-day-number { color: var(--texto2); opacity: .6; }
+.fc .fc-day-today .fc-daygrid-day-number { background: var(--c-rojo); color: #fff; font-weight: 600; }
+.fc td.dia-sel { background: color-mix(in srgb, var(--c-mias) 13%, transparent); }
+.fc-dayGridMonth-view .fc-daygrid-day-events {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; padding: 2px 4px 4px; margin: 0 !important; min-height: 12px;
+}
+.fc-dayGridMonth-view .fc-daygrid-event-harness { margin: 0 !important; }
+.fc-dayGridMonth-view .fc-daygrid-day-bottom { display: none; }
+.fc .ev-tarea { background: transparent !important; border: 0 !important; margin: 0 !important; padding: 0 !important; }
+.fc .ev-tarea .fc-event-main { color: var(--bs-body-color); }
+.punto { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.evento-semana {
+  display: flex; align-items: flex-start; gap: 4px; font-size: 12px; line-height: 1.2; white-space: normal;
+  color: var(--bs-body-color); overflow: hidden; padding: 1px 2px;
+}
+.evento-semana .punto { margin-top: 4px; }
+.btn-agregar-dia {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 8px; padding: 0 4px;
+  border: 0; background: none; color: var(--c-mias); font-size: 16px;
+}
+
+/* ---------- Captura rápida (hoja que baja desde arriba, así el teclado no la tapa) ---------- */
+.captura-fondo { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); z-index: 1060; display: none; }
+.captura {
+  position: fixed; left: 8px; right: 8px; top: calc(env(safe-area-inset-top) + 8px); z-index: 1061; display: none;
+  background: var(--tarjeta); border-radius: 16px; padding: 14px; box-shadow: 0 10px 40px rgba(0, 0, 0, .25);
+}
+@media (min-width: 640px) { .captura { left: 50%; right: auto; width: 560px; transform: translateX(-50%); top: 12vh; } }
+.captura-fondo.abierta, .captura.abierta { display: block; }
+.captura form { display: flex; gap: 8px; align-items: center; }
+.captura input {
+  flex: 1; min-width: 0; border: 0; outline: none; background: var(--seg-fondo); border-radius: 10px;
+  min-height: 46px; padding: 0 12px; font-size: 17px; color: inherit;
+}
+.captura .btn-enviar {
+  width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--c-mias); color: #fff; font-size: 20px; flex-shrink: 0;
+}
+.vista-previa { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; font-size: 13px; color: var(--texto2); min-height: 24px; }
+.chip { background: var(--seg-fondo); border-radius: 20px; padding: 3px 10px; color: var(--bs-body-color); }
+.chip i { margin-right: 3px; }
+
+/* ---------- Aviso flotante (toast propio) ---------- */
+.aviso {
+  position: fixed; left: 50%; bottom: calc(138px + env(safe-area-inset-bottom)); z-index: 2000;
+  transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: all .25s ease;
+  max-width: calc(100vw - 32px); width: max-content; display: flex; align-items: center; gap: 14px;
+  background: rgba(40, 40, 42, .96); color: #fff; border-radius: 14px; padding: 10px 10px 10px 16px; font-size: 15px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .25);
+}
+@media (min-width: 992px) { .aviso { bottom: 32px; } }
+.aviso.visible { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.aviso button { border: 0; background: none; color: #64b5ff; font-weight: 600; min-height: 36px; padding: 0 6px; white-space: nowrap; }
+
+/* ---------- Modales como hojas de iOS ---------- */
+.modal { --bs-modal-bg: var(--fondo); --bs-modal-border-width: 0; }
+.modal-header { border-bottom: .5px solid var(--separador); padding: 6px 8px; gap: 4px; }
+.modal-header .modal-title { font-size: 17px; font-weight: 600; flex: 1; text-align: center; }
+.modal-header .btn-link { text-decoration: none; min-height: 44px; font-size: 17px; color: var(--c-mias); }
+.modal-content { padding-top: env(safe-area-inset-top); }
+@media (min-width: 576px) { .modal-content { padding-top: 0; border-radius: 14px; overflow: hidden; } }
+.modal-body { padding: 16px; }
+.modal-body .grupo { margin-bottom: 18px; }
+.campo { width: 100%; border: 0; outline: none; background: transparent; padding: 13px 14px; font-size: 17px; color: inherit; resize: vertical; display: block; }
+.campo-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 14px; margin: 0; }
+.campo-fila > span { flex-shrink: 0; }
+.control {
+  border: 0; outline: none; background: transparent; color: var(--bs-body-color); font-size: 17px;
+  text-align: right; text-align-last: right; min-height: 44px; min-width: 0; flex: 1; max-width: 62%;
+}
+.control::-webkit-date-and-time-value { text-align: right; }
+select.control { cursor: pointer; }
+.control:focus { color: var(--c-mias); }
+.segmento { display: flex; background: var(--seg-fondo); border-radius: 9px; padding: 2px; gap: 2px; }
+.segmento input { position: absolute; opacity: 0; pointer-events: none; }
+.segmento label { flex: 1; text-align: center; min-height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 7px; font-size: 15px; cursor: pointer; }
+.segmento input:checked + label { background: var(--tarjeta); box-shadow: 0 1px 4px rgba(0, 0, 0, .15); font-weight: 600; }
+.fila-boton {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0 14px;
+  border: 0; background: transparent; color: var(--c-mias); font-size: 17px; text-align: left; cursor: pointer;
+}
+.fila-boton.peligro { color: var(--c-rojo); }
+.nota { font-size: 13px; color: var(--texto2); margin: -10px 4px 18px; }
+.etiqueta-campo { font-size: 13px; color: var(--texto2); text-transform: uppercase; margin: 0 4px 6px; font-weight: 600; }
+
+/* Selector de tareas para los "Tres para hoy" */
+.fila-elegir {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 14px;
+  border: 0; background: var(--tarjeta); color: inherit; text-align: left;
+}
+.fila-elegir .fila-titulo { font-size: 16px; }
+
+/* ---------- Repaso ---------- */
+.progreso { height: 4px; background: var(--seg-fondo); }
+.progreso > div { height: 100%; background: var(--c-mias); transition: width .3s; }
+.rep-titulo { font-size: 26px; font-weight: 700; margin: 4px 0 2px; }
+.rep-sub { color: var(--texto2); margin-bottom: 16px; }
+.rep-item { background: var(--tarjeta); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+.rep-item.hecho { opacity: .6; }
+.rep-item .fila-titulo { font-weight: 500; }
+.acciones { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pill {
+  min-height: 44px; border-radius: 22px; border: 1px solid var(--separador); background: transparent;
+  padding: 0 14px; color: inherit; font-size: 15px; display: inline-flex; align-items: center; gap: 6px;
+}
+.pill.activo { background: var(--c, var(--c-mias)); border-color: var(--c, var(--c-mias)); color: #fff; }
+.pill.peligro { color: var(--c-rojo); }
+.rep-campos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.rep-campos input {
+  flex: 1 1 150px; min-width: 0; min-height: 44px; border: 0; border-radius: 10px; background: var(--seg-fondo);
+  padding: 0 12px; font-size: 16px; color: inherit;
+}
+.elegible { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; padding: 6px 12px; border: 0; background: var(--tarjeta); color: inherit; text-align: left; }
+.elegible .marca { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--separador); flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px; }
+.elegible.sel .marca { background: var(--c-mias); border-color: var(--c-mias); }
+.modal-footer { border-top: .5px solid var(--separador); padding: 8px 16px calc(8px + env(safe-area-inset-bottom)); }
+.modal-footer .btn { min-height: 46px; border-radius: 12px; font-size: 17px; padding: 0 20px; }
+
+/* ---------- Login ---------- */
+.login {
+  position: fixed; inset: 0; z-index: 3000; background: var(--fondo); overflow-y: auto;
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(env(safe-area-inset-top) + 24px) 16px calc(env(safe-area-inset-bottom) + 24px);
+}
+.login-caja { width: 100%; max-width: 360px; text-align: center; }
+.login-icono {
+  width: 72px; height: 72px; border-radius: 18px; background: var(--c-mias); color: #fff; font-size: 40px;
+  display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;
+}
+.login h1 { font-size: 28px; font-weight: 700; margin-bottom: 24px; }
+.login .grupo { text-align: left; margin-bottom: 12px; }
+.login-error { color: var(--c-rojo); font-size: 14px; margin-bottom: 12px; }
+.login-boton { min-height: 50px; border-radius: 12px; font-size: 17px; font-weight: 600; }
+
+/* Aviso si no cargaron las librerías (sin internet) */
+.sin-libs { background: var(--c-delegadas); color: #fff; padding: 10px 14px; border-radius: 12px; margin-top: 10px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- Login: tapa la app hasta que se entra -->
+<div class="login" id="login" hidden>
+  <form class="login-caja" id="loginForm">
+    <div class="login-icono"><i class="bi bi-check2-circle"></i></div>
+    <h1>Tareas</h1>
+    <div class="grupo">
+      <input class="campo" id="loginUsuario" name="username" autocomplete="username" placeholder="Usuario"
+             autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Usuario">
+      <input class="campo" id="loginClave" name="password" type="password" autocomplete="current-password"
+             placeholder="Contraseña" aria-label="Contraseña">
+    </div>
+    <div class="login-error" id="loginError" hidden>Usuario o contraseña incorrectos.</div>
+    <button class="btn btn-primary w-100 login-boton" type="submit">Entrar</button>
+  </form>
+</div>
+
+<div class="app">
+  <!-- Sidebar (solo desktop) -->
+  <nav class="sidebar d-none d-lg-flex" aria-label="Navegación">
+    <div class="marca"><i class="bi bi-check2-circle"></i> Tareas</div>
+    <button class="item-lateral" data-accion="vista" data-vista="hoy"><i class="bi bi-sun"></i> Hoy</button>
+    <button class="item-lateral" data-accion="vista" data-vista="listas"><i class="bi bi-list-ul"></i> Listas <span class="insignia" data-insignia hidden></span></button>
+    <button class="item-lateral" data-accion="vista" data-vista="calendario"><i class="bi bi-calendar3"></i> Calendario</button>
+    <hr>
+    <button class="item-lateral" data-accion="repaso"><i class="bi bi-check2-square"></i> Repaso</button>
+    <button class="item-lateral" data-accion="ajustes"><i class="bi bi-gear"></i> Ajustes</button>
+  </nav>
+
+  <main>
+    <div id="avisoLibs"></div>
+
+    <!-- HOY: se dibuja entero desde JS -->
+    <section class="vista" id="vista-hoy"></section>
+
+    <!-- LISTAS -->
+    <section class="vista" id="vista-listas" hidden>
+      <div class="cabecera">
+        <h1>Listas</h1>
+        <button class="btn-icono" data-accion="ajustes" aria-label="Ajustes"><i class="bi bi-gear"></i></button>
+      </div>
+      <div id="listasCuerpo"></div>
+    </section>
+
+    <!-- CALENDARIO: el contenedor de FullCalendar no se redibuja, solo sus eventos -->
+    <section class="vista" id="vista-calendario" hidden>
+      <div class="cabecera">
+        <h1>Calendario</h1>
+        <button class="btn-icono" data-accion="ajustes" aria-label="Ajustes"><i class="bi bi-gear"></i></button>
+      </div>
+      <div id="cal"></div>
+      <div id="calDia"></div>
+    </section>
+  </main>
+
+  <!-- Tabs (solo móvil) -->
+  <nav class="tabbar d-lg-none" aria-label="Navegación">
+    <button data-accion="vista" data-vista="hoy"><i class="bi bi-sun"></i>Hoy</button>
+    <button data-accion="vista" data-vista="listas"><i class="bi bi-list-ul"></i>Listas<span class="insignia" data-insignia hidden></span></button>
+    <button data-accion="vista" data-vista="calendario"><i class="bi bi-calendar3"></i>Calendario</button>
+  </nav>
+
+  <button class="fab" data-accion="captura" aria-label="Anotar tarea"><i class="bi bi-plus-lg"></i></button>
+</div>
+
+<!-- Captura rápida -->
+<div class="captura-fondo" id="capturaFondo"></div>
+<div class="captura" id="captura" role="dialog" aria-label="Anotar tarea">
+  <form id="capturaForm" autocomplete="off">
+    <input id="capturaInput" type="text" enterkeyhint="done" placeholder="¿Qué tenés que hacer?" aria-label="Nueva tarea">
+    <button class="btn-enviar" type="submit" aria-label="Agregar"><i class="bi bi-arrow-up"></i></button>
+  </form>
+  <div class="vista-previa" id="vistaPrevia"></div>
+</div>
+
+<!-- Aviso flotante -->
+<div class="aviso" id="aviso" role="status" aria-live="polite"><span class="aviso-msg"></span><button type="button" hidden></button></div>
+
+<!-- Modal: editar tarea -->
+<div class="modal fade" id="modalEditar" tabindex="-1" aria-labelledby="tituloEditar" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen-sm-down modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="btn btn-link" data-bs-dismiss="modal">Cancelar</button>
+        <h2 class="modal-title" id="tituloEditar">Tarea</h2>
+        <button type="button" class="btn btn-link fw-semibold" id="btnGuardar">Listo</button>
+      </div>
+      <div class="modal-body">
+        <div class="grupo">
+          <input class="campo" id="edTitulo" placeholder="Título" enterkeyhint="done">
+          <textarea class="campo" id="edNotas" rows="3" placeholder="Notas"></textarea>
+        </div>
+        <div class="grupo">
+          <label class="campo-fila"><span>Lista</span>
+            <select class="control" id="edLista"></select></label>
+          <label class="campo-fila" id="filaDelegado"><span>Delegada a</span>
+            <input class="control" id="edDelegado" placeholder="Nombre"></label>
+        </div>
+        <div class="grupo">
+          <label class="campo-fila"><span>Fecha</span><input class="control" type="date" id="edFecha"></label>
+          <label class="campo-fila"><span>Hora</span><input class="control" type="time" id="edHora"></label>
+          <label class="campo-fila"><span>Aviso</span>
+            <select class="control" id="edRecordatorio">
+              <option value="">Sin aviso</option>
+              <option value="0">A la hora</option>
+              <option value="15">15 min antes</option>
+              <option value="60">1 hora antes</option>
+              <option value="1440">1 día antes</option>
+            </select></label>
+          <label class="campo-fila"><span>Repetir</span>
+            <select class="control" id="edRecurrencia">
+              <option value="">No se repite</option>
+              <option value="diaria">Todos los días</option>
+              <option value="diasHabiles">Días hábiles</option>
+              <option value="semanal">Cada semana</option>
+              <option value="mensual">Cada mes</option>
+            </select></label>
+          <button type="button" class="fila-boton" id="btnSinFecha"><i class="bi bi-x-circle"></i> Quitar fecha y hora</button>
+        </div>
+        <div class="etiqueta-campo">Prioridad</div>
+        <div class="segmento mb-4">
+          <input type="radio" name="edPrioridad" id="prAlta" value="alta"><label for="prAlta">Alta</label>
+          <input type="radio" name="edPrioridad" id="prNormal" value="normal"><label for="prNormal">Normal</label>
+          <input type="radio" name="edPrioridad" id="prBaja" value="baja"><label for="prBaja">Baja</label>
+        </div>
+        <div class="grupo">
+          <button type="button" class="fila-boton" id="btnHoy3"><i class="bi bi-3-circle"></i> Sumar a "Tres para hoy"</button>
+          <button type="button" class="fila-boton" id="btnCompletar"><i class="bi bi-check-circle"></i> <span>Completar</span></button>
+          <button type="button" class="fila-boton peligro" id="btnEliminar"><i class="bi bi-trash"></i> Eliminar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: elegir tarea para un espacio de "Tres para hoy" -->
+<div class="modal fade" id="modalElegir" tabindex="-1" aria-labelledby="tituloElegir" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen-sm-down modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="btn btn-link" data-bs-dismiss="modal">Cerrar</button>
+        <h2 class="modal-title" id="tituloElegir">Elegí una tarea</h2>
+        <span style="width:80px"></span>
+      </div>
+      <div class="modal-body">
+        <div class="rep-campos mt-0 mb-3"><input id="elegirBuscar" type="search" placeholder="Buscar" aria-label="Buscar tarea"></div>
+        <div class="grupo" id="elegirLista"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: repaso guiado -->
+<div class="modal fade" id="modalRepaso" tabindex="-1" aria-labelledby="tituloRepaso" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen-md-down modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="btn btn-link" data-bs-dismiss="modal">Salir</button>
+        <h2 class="modal-title" id="tituloRepaso">Repaso</h2>
+        <span style="width:60px"></span>
+      </div>
+      <div class="progreso"><div id="repasoProgreso"></div></div>
+      <div class="modal-body" id="repasoCuerpo"></div>
+      <div class="modal-footer d-flex justify-content-between">
+        <button type="button" class="btn btn-light" id="repasoAtras">Atrás</button>
+        <button type="button" class="btn btn-primary" id="repasoSiguiente">Siguiente</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: ajustes -->
+<div class="modal fade" id="modalAjustes" tabindex="-1" aria-labelledby="tituloAjustes" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen-sm-down modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span style="width:80px"></span>
+        <h2 class="modal-title" id="tituloAjustes">Ajustes</h2>
+        <button type="button" class="btn btn-link fw-semibold" data-bs-dismiss="modal">Listo</button>
+      </div>
+      <div class="modal-body">
+        <div class="grupo">
+          <label class="campo-fila"><span>Apariencia</span>
+            <select class="control" id="ajTema">
+              <option value="auto">Automática</option>
+              <option value="claro">Clara</option>
+              <option value="oscuro">Oscura</option>
+            </select></label>
+        </div>
+
+        <div class="etiqueta-campo">Recordatorios</div>
+        <div class="grupo">
+          <div class="campo-fila"><span>Estado</span><span class="text-secundario text-end" id="ajNotif"></span></div>
+          <button type="button" class="fila-boton" id="ajPermiso"><i class="bi bi-bell"></i> Pedir permiso de notificaciones</button>
+        </div>
+        <p class="nota">Las notificaciones solo funcionan con la app abierta en una pestaña. Si la cerrás, no te llegan.
+          En iPhone el navegador no deja que una página suelta mande notificaciones: vas a ver el aviso adentro de la app.</p>
+
+        <div class="etiqueta-campo">Datos</div>
+        <div class="grupo">
+          <button type="button" class="fila-boton" id="ajExportar"><i class="bi bi-box-arrow-up"></i> Exportar (descarga un JSON)</button>
+          <button type="button" class="fila-boton" id="ajImportar"><i class="bi bi-box-arrow-in-down"></i> Importar un JSON</button>
+        </div>
+        <input type="file" id="ajArchivo" accept="application/json,.json" hidden>
+        <p class="nota">Todo se guarda solo en este navegador. Para pasar tus tareas a otro dispositivo, exportá acá e importá allá.</p>
+
+        <div class="grupo">
+          <button type="button" class="fila-boton" id="ajSalir"><i class="bi bi-box-arrow-right"></i> Cerrar sesión</button>
+          <button type="button" class="fila-boton peligro" id="ajBorrar"><i class="bi bi-trash"></i> Borrar todo</button>
+        </div>
+        <p class="nota" id="ajResumen"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/es.global.min.js"></script>
+
+<script>
+'use strict';
+
+/* =========================================================
+   CONSTANTES
+   ========================================================= */
+const CLAVE = 'tareasApp.v1';            // única clave de localStorage
+
+const LISTAS = {
+  bandeja:   { nombre: 'Bandeja de entrada',    corto: 'Bandeja',   icono: 'bi-inbox-fill',  color: 'var(--c-bandeja)' },
+  mias:      { nombre: 'Mías',                  corto: 'Mías',      icono: 'bi-person-fill', color: 'var(--c-mias)' },
+  delegadas: { nombre: 'Delegadas / esperando', corto: 'Delegadas', icono: 'bi-people-fill', color: 'var(--c-delegadas)' },
+  algundia:  { nombre: 'Algún día',             corto: 'Algún día', icono: 'bi-cloud-fill',  color: 'var(--c-algundia)' },
+};
+const ORDEN_LISTAS = ['bandeja', 'mias', 'delegadas', 'algundia'];
+const RECURRENCIAS = { diaria: 'Todos los días', diasHabiles: 'Días hábiles', semanal: 'Cada semana', mensual: 'Cada mes' };
+const AVISOS = { 0: 'a la hora', 15: '15 min antes', 60: '1 h antes', 1440: '1 día antes' };
+const PESO_PRIORIDAD = { alta: 0, normal: 1, baja: 2 };
+
+// Nombres escritos a mano: no dependen del idioma del sistema
+const DIAS    = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const DIAS_C  = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const MESES   = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const MESES_C = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/* =========================================================
+   UTILIDADES
+   ========================================================= */
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2, '0');
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const sinAcentos = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// No uso crypto.randomUUID porque no existe fuera de contextos seguros
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+// Fechas siempre en hora local, como texto YYYY-MM-DD
+const aISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const deISO = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const hoyISO = () => aISO(new Date());
+const sumarDias = (iso, n) => { const d = deISO(iso); d.setDate(d.getDate() + n); return aISO(d); };
+const esHabil = iso => { const w = deISO(iso).getDay(); return w > 0 && w < 6; };
+const diasEntre = (a, b) => Math.round((deISO(b) - deISO(a)) / 86400000);
+
+// +1 mes; si el día no existe (31 de febrero) queda en el último del mes
+function sumarMes(iso) {
+  const d = deISO(iso), dia = d.getDate();
+  d.setDate(1); d.setMonth(d.getMonth() + 1);
+  const ultimo = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(dia, ultimo));
+  return aISO(d);
+}
+
+// Próximo día de la semana (0 = domingo). Si es hoy, salta a la semana que viene salvo que se pida incluirlo.
+function proximoDiaSemana(dow, incluirHoy = false) {
+  let diff = (dow - new Date().getDay() + 7) % 7;
+  if (diff === 0 && !incluirHoy) diff = 7;
+  return sumarDias(hoyISO(), diff);
+}
+
+// "Hoy", "Mañana", "Viernes", "vie 3 oct"
+function formatFecha(iso) {
+  const diff = diasEntre(hoyISO(), iso);
+  if (diff === 0) return 'Hoy';
+  if (diff === 1) return 'Mañana';
+  if (diff === -1) return 'Ayer';
+  const d = deISO(iso);
+  if (diff > 1 && diff < 7) return cap(DIAS[d.getDay()]);
+  const base = `${DIAS_C[d.getDay()]} ${d.getDate()} ${MESES_C[d.getMonth()]}`;
+  return d.getFullYear() !== new Date().getFullYear() ? `${base} ${d.getFullYear()}` : base;
+}
+const formatHora = h => h ? h.replace(/^0(\d)/, '$1') : '';
+const fechaLarga = iso => { const d = deISO(iso); return `${cap(DIAS[d.getDay()])} ${d.getDate()} de ${MESES[d.getMonth()]}`; };
+
+/* =========================================================
+   MODELO Y PERSISTENCIA
+   ========================================================= */
+function estadoVacio() {
+  return { version: 1, tareas: [], tresPorFecha: {}, ultimoRepaso: null, ajustes: { tema: 'auto', permisoPedido: false, vista: 'hoy' } };
+}
+
+// Crea una tarea con todos los campos, completando lo que falte (sirve también para validar lo importado)
+function nuevaTarea(c = {}) {
+  const rec = c.recordatorio === '' || c.recordatorio == null ? null : Number(c.recordatorio);
+  return {
+    id: c.id || uid(),
+    titulo: String(c.titulo || '').trim(),
+    notas: c.notas || '',
+    lista: LISTAS[c.lista] ? c.lista : 'bandeja',
+    fecha: /^\d{4}-\d{2}-\d{2}$/.test(c.fecha || '') ? c.fecha : null,
+    hora: /^\d{2}:\d{2}$/.test(c.hora || '') ? c.hora : null,
+    recordatorio: Number.isFinite(rec) ? rec : null,
+    prioridad: PESO_PRIORIDAD[c.prioridad] !== undefined ? c.prioridad : 'normal',
+    delegadoA: c.delegadoA || null,
+    completada: !!c.completada,
+    creada: c.creada || new Date().toISOString(),
+    completadaEl: c.completadaEl || null,
+    recurrencia: RECURRENCIAS[c.recurrencia] ? c.recurrencia : null,
+    notificado: c.notificado || null,   // marca de "ya avisé": fecha+hora+aviso con los que se notificó
+  };
+}
+
+function normalizar(obj) {
+  const e = estadoVacio();
+  if (!obj || !Array.isArray(obj.tareas)) throw new Error('El archivo no tiene una lista de tareas.');
+  e.tareas = obj.tareas.map(nuevaTarea).filter(t => t.titulo);
+  e.tresPorFecha = obj.tresPorFecha && typeof obj.tresPorFecha === 'object' ? obj.tresPorFecha : {};
+  e.ultimoRepaso = obj.ultimoRepaso || null;
+  Object.assign(e.ajustes, obj.ajustes || {});
+  return e;
+}
+
+function datosIniciales() {
+  const hoy = hoyISO(), manana = sumarDias(hoy, 1), viernes = proximoDiaSemana(5, true);
+  let habil = hoy; while (!esHabil(habil)) habil = sumarDias(habil, 1);
+  return [
+    nuevaTarea({ titulo: 'Armar propuesta de red para el depósito nuevo', lista: 'mias', fecha: viernes, prioridad: 'alta' }),
+    nuevaTarea({ titulo: 'Repaso diario: calendario + listas, elegir 3', lista: 'mias', fecha: habil, hora: '08:30', recordatorio: 0, recurrencia: 'diasHabiles' }),
+    nuevaTarea({ titulo: 'Repaso semanal', lista: 'mias', fecha: viernes, hora: '16:00', recordatorio: 0, recurrencia: 'semanal' }),
+    nuevaTarea({ titulo: 'Preparar la mañana: ropa + café + alarma 7:00 confirmada', lista: 'mias', fecha: hoy, hora: '22:00', recordatorio: 0, recurrencia: 'diaria' }),
+    nuevaTarea({ titulo: 'VPN con Neuralsoft y Bluemail', lista: 'delegadas', fecha: manana, hora: '09:00', delegadoA: 'Santiago', prioridad: 'alta' }),
+    nuevaTarea({ titulo: 'Limpiar mails viejos de la bandeja', lista: 'algundia' }),
+    nuevaTarea({ titulo: 'Consultar con un psicólogo por la atención', lista: 'algundia' }),
+  ];
+}
+
+function escribir(e) {
+  try { localStorage.setItem(CLAVE, JSON.stringify(e)); }
+  catch (err) { console.warn('No se pudo guardar', err); }
+}
+
+function cargar() {
+  try {
+    const raw = localStorage.getItem(CLAVE);
+    if (raw) return normalizar(JSON.parse(raw));
+  } catch (err) { console.warn('Datos ilegibles, arranco de cero', err); }
+  const e = estadoVacio();
+  e.tareas = datosIniciales();
+  escribir(e);
+  return e;
+}
+
+let estado = cargar();
+const guardar = () => escribir(estado);
+const buscar = id => estado.tareas.find(t => t.id === id);
+const pendientes = () => estado.tareas.filter(t => !t.completada);
+
+function ordenar(arr) {
+  return arr.slice().sort((a, b) =>
+    (a.fecha || '9999').localeCompare(b.fecha || '9999') ||
+    (a.hora || '').localeCompare(b.hora || '') ||
+    PESO_PRIORIDAD[a.prioridad] - PESO_PRIORIDAD[b.prioridad] ||
+    a.creada.localeCompare(b.creada));
+}
+
+// Los tres elegidos de una fecha, siempre como arreglo de 3 (ids o null)
+function tresDe(fecha) {
+  const a = (estado.tresPorFecha[fecha] || []).slice(0, 3);
+  while (a.length < 3) a.push(null);
+  return a.map(id => (id && buscar(id) ? id : null));
+}
+
+// Borra los "tres" de fechas viejas para que el JSON no crezca sin fin
+function limpiarTres() {
+  const limite = sumarDias(hoyISO(), -30);
+  for (const f of Object.keys(estado.tresPorFecha)) if (f < limite) delete estado.tresPorFecha[f];
+}
+
+/* =========================================================
+   ACCIONES SOBRE TAREAS
+   ========================================================= */
+
+// Fecha siguiente de una tarea recurrente; nunca queda en el pasado
+function siguienteFecha(t) {
+  const hoy = hoyISO();
+  const paso = x => {
+    switch (t.recurrencia) {
+      case 'diaria': return sumarDias(x, 1);
+      case 'diasHabiles': { let y = sumarDias(x, 1); while (!esHabil(y)) y = sumarDias(y, 1); return y; }
+      case 'semanal': return sumarDias(x, 7);
+      case 'mensual': return sumarMes(x);
+    }
+  };
+  let f = paso(t.fecha || hoy);
+  while (f <= hoy) f = paso(f);
+  return f;
+}
+
+function alternarCompletada(id) {
+  const t = buscar(id);
+  if (!t) return;
+  if (t.completada) {              // volver a pendiente
+    t.completada = false; t.completadaEl = null;
+    guardar(); render();
+    return;
+  }
+  const antes = { ...t };
+  t.completada = true;
+  t.completadaEl = new Date().toISOString();
+  let nueva = null;
+  if (t.recurrencia) {             // la recurrente genera la próxima al completarse
+    nueva = nuevaTarea({ ...t, id: null, creada: null, completada: false, completadaEl: null, notificado: null, fecha: siguienteFecha(t) });
+    estado.tareas.push(nueva);
+  }
+  guardar(); render();
+  aviso(nueva ? `Hecha. La próxima: ${formatFecha(nueva.fecha)}` : 'Hecha 👏', 'Deshacer', () => {
+    Object.assign(t, antes);
+    if (nueva) estado.tareas = estado.tareas.filter(x => x.id !== nueva.id);
+    guardar(); render();
+  });
+}
+
+function borrarTarea(id, conAviso = true) {
+  const i = estado.tareas.findIndex(t => t.id === id);
+  if (i < 0) return;
+  const [t] = estado.tareas.splice(i, 1);
+  guardar(); render();
+  if (conAviso) aviso('Tarea borrada', 'Deshacer', () => { estado.tareas.splice(i, 0, t); guardar(); render(); });
+}
+
+function asignarSlot(i, id, fecha = hoyISO()) {
+  const a = tresDe(fecha).map(x => (x === id ? null : x));   // si ya estaba en otro lugar, se mueve
+  a[i] = id;
+  estado.tresPorFecha[fecha] = a;
+  guardar(); render();
+}
+
+/* =========================================================
+   CAPTURA RÁPIDA: interpreta atajos del texto
+   "Llamar al arquitecto mañana 9:00 !alta @Santiago"
+   ========================================================= */
+function parsear(texto) {
+  const r = { titulo: '', fecha: null, hora: null, prioridad: 'normal', delegadoA: null };
+  const hoy = hoyISO();
+  let t = ` ${texto} `;   // espacios a los costados para que los patrones se apoyen en \s
+
+  t = t.replace(/\s!(alta|normal|baja)(?=\s)/i, (m, p) => { r.prioridad = p.toLowerCase(); return ' '; });
+  t = t.replace(/\s@([\p{L}\p{N}._-]+)(?=\s)/u, (m, n) => { r.delegadoA = n; return ' '; });
+  // Hora: 15:30, 9:00, 9hs, a las 18:00
+  t = t.replace(/\s(?:a\s+las\s+)?([01]?\d|2[0-3])(?::([0-5]\d)|\s?(?:hs|h)\.?)(?=\s)/i, (m, h, mi) => {
+    r.hora = `${pad(+h)}:${mi || '00'}`; return ' ';
+  });
+  t = t.replace(/\spasado\s+ma[nñ]ana(?=\s)/i, () => { r.fecha = sumarDias(hoy, 2); return ' '; });
+  // "mañana" es fecha, salvo en "la mañana" / "por la mañana"
+  t = t.replace(/(\s)((?:por|de|a)?\s*la\s+)?(ma[nñ]ana)(?=\s)/i, (m, sp, la) => {
+    if (la) return m;
+    if (!r.fecha) r.fecha = sumarDias(hoy, 1);
+    return ' ';
+  });
+  t = t.replace(/\shoy(?=\s)/i, () => { if (!r.fecha) r.fecha = hoy; return ' '; });
+  t = t.replace(/\s(?:el\s+)?(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)(?=\s)/i, (m, d) => {
+    const i = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'].indexOf(sinAcentos(d.toLowerCase()));
+    if (!r.fecha) r.fecha = proximoDiaSemana(i);
+    return ' ';
+  });
+  // Fecha numérica: 15/10 o 15/10/2026
+  t = t.replace(/\s(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?(?=\s)/, (m, d, mo, y) => {
+    const anio = y ? (y.length === 2 ? 2000 + Number(y) : Number(y)) : new Date().getFullYear();
+    let f = `${anio}-${pad(+mo)}-${pad(+d)}`;
+    if (deISO(f).getMonth() !== +mo - 1) return m;          // 31/02 no es una fecha: se deja en el título
+    if (!y && f < hoy) f = `${anio + 1}-${pad(+mo)}-${pad(+d)}`;
+    if (!r.fecha) r.fecha = f;
+    return ' ';
+  });
+
+  r.titulo = t.replace(/\s+/g, ' ').trim() || texto.trim();
+  if (r.hora && !r.fecha) r.fecha = hoy;
+  return r;
+}
+
+let capturaFecha = null;   // fecha por defecto cuando se abre desde un día del calendario
+
+function abrirCaptura(fecha = null) {
+  capturaFecha = fecha;
+  $('#capturaFondo').classList.add('abierta');
+  $('#captura').classList.add('abierta');
+  const i = $('#capturaInput');
+  i.value = '';
+  actualizarVistaPrevia();
+  i.focus();   // en el mismo toque, así iOS abre el teclado
+}
+function cerrarCaptura() {
+  $('#capturaFondo').classList.remove('abierta');
+  $('#captura').classList.remove('abierta');
+  $('#capturaInput').blur();
+}
+function actualizarVistaPrevia() {
+  const txt = $('#capturaInput').value.trim();
+  const caja = $('#vistaPrevia');
+  if (!txt) {
+    caja.innerHTML = capturaFecha
+      ? `<span class="chip"><i class="bi bi-calendar3"></i>${esc(formatFecha(capturaFecha))}</span>`
+      : 'Atajos: hoy · mañana · viernes · 15:30 · !alta · @nombre';
+    return;
+  }
+  const p = parsear(txt);
+  const fecha = p.fecha || capturaFecha;
+  const chips = [];
+  chips.push(`<span class="chip"><i class="bi ${p.delegadoA ? LISTAS.delegadas.icono : LISTAS.bandeja.icono}"></i>${p.delegadoA ? 'Delegadas' : 'Bandeja'}</span>`);
+  if (fecha) chips.push(`<span class="chip"><i class="bi bi-calendar3"></i>${esc(formatFecha(fecha))}</span>`);
+  if (p.hora) chips.push(`<span class="chip"><i class="bi bi-clock"></i>${formatHora(p.hora)}</span>`);
+  if (p.prioridad !== 'normal') chips.push(`<span class="chip"><i class="bi bi-flag-fill"></i>${p.prioridad}</span>`);
+  if (p.delegadoA) chips.push(`<span class="chip"><i class="bi bi-person-fill"></i>${esc(p.delegadoA)}</span>`);
+  caja.innerHTML = chips.join('');
+}
+function crearDesdeCaptura() {
+  const txt = $('#capturaInput').value.trim();
+  if (!txt) { cerrarCaptura(); return; }
+  const p = parsear(txt);
+  const t = nuevaTarea({
+    titulo: p.titulo,
+    fecha: p.fecha || capturaFecha,
+    hora: p.hora,
+    recordatorio: p.hora ? 0 : null,                 // con hora, avisa a esa hora
+    prioridad: p.prioridad,
+    delegadoA: p.delegadoA,
+    lista: p.delegadoA ? 'delegadas' : 'bandeja',    // si se delegó con @, va directo a Delegadas
+  });
+  estado.tareas.push(t);
+  guardar();
+  cerrarCaptura();
+  render();
+  aviso(`Anotada en ${LISTAS[t.lista].corto}`, 'Editar', () => abrirEditar(t.id));
+}
+
+/* =========================================================
+   AVISO FLOTANTE (con acción opcional, p. ej. Deshacer)
+   ========================================================= */
+let temporizadorAviso;
+function aviso(msg, textoAccion, fn) {
+  const el = $('#aviso'), b = el.querySelector('button');
+  el.querySelector('.aviso-msg').textContent = msg;
+  b.hidden = !textoAccion;
+  if (textoAccion) { b.textContent = textoAccion; b.onclick = () => { ocultarAviso(); fn(); }; }
+  el.classList.add('visible');
+  clearTimeout(temporizadorAviso);
+  temporizadorAviso = setTimeout(ocultarAviso, textoAccion ? 6000 : 3500);
+}
+function ocultarAviso() { $('#aviso').classList.remove('visible'); }
+
+/* =========================================================
+   DIBUJO
+   ========================================================= */
+let vista = ['hoy', 'listas', 'calendario'].includes(estado.ajustes.vista) ? estado.ajustes.vista : 'hoy';
+let listaSel = 'mias';
+let completadasAbiertas = false;
+let diaSel = hoyISO();
+let cal = null;
+const puedeArrastrar = matchMedia('(pointer: fine)').matches;
+
+function vacio(titulo, texto = '') {
+  return `<div class="vacio"><strong>${titulo}</strong>${texto}</div>`;
+}
+
+// Una fila de tarea. Se usa en todas las pantallas.
+function fila(t, o = {}) {
+  const hoy = hoyISO();
+  const vencida = !t.completada && t.fecha && t.fecha < hoy;
+  const L = LISTAS[t.lista];
+  const meta = [];
+  if (o.mostrarLista) meta.push(`<span style="color:${L.color}"><i class="bi ${L.icono}"></i>${L.corto}</span>`);
+  if (t.fecha) meta.push(`<span class="${vencida ? 'vencida' : ''}"><i class="bi bi-calendar3"></i>${formatFecha(t.fecha)}${t.hora ? ' ' + formatHora(t.hora) : ''}</span>`);
+  if (t.recordatorio != null && t.hora) meta.push(`<span><i class="bi bi-bell"></i>${AVISOS[t.recordatorio] || ''}</span>`);
+  if (t.recurrencia) meta.push(`<span><i class="bi bi-arrow-repeat"></i>${RECURRENCIAS[t.recurrencia]}</span>`);
+  if (t.delegadoA) meta.push(`<span class="delegado"><i class="bi bi-person-fill"></i>${esc(t.delegadoA)}</span>`);
+  if (t.notas) meta.push(`<span><i class="bi bi-card-text"></i>nota</span>`);
+  const prio = t.prioridad === 'alta' ? '<i class="bi bi-flag-fill prioridad-alta"></i> '
+             : t.prioridad === 'baja' ? '<i class="bi bi-arrow-down prioridad-baja"></i> ' : '';
+  const arrastre = o.arrastrable && puedeArrastrar ? 'draggable="true"' : '';
+  return `
+  <div class="fila ${t.completada ? 'completada' : ''} ${vencida ? 'es-vencida' : ''}" data-id="${t.id}" ${arrastre}>
+    <div class="fila-fondo"><i class="bi ${t.completada ? 'bi-arrow-counterclockwise' : 'bi-check-lg'}"></i></div>
+    <div class="fila-cont">
+      <button class="check" data-accion="completar" style="--c:${L.color}" aria-label="${t.completada ? 'Marcar como pendiente' : 'Completar'}"><span><i class="bi bi-check"></i></span></button>
+      <div class="fila-texto" data-accion="editar">
+        <div class="fila-titulo">${prio}${esc(t.titulo)}</div>
+        ${meta.length ? `<div class="fila-meta">${meta.join('')}</div>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function textoUltimoRepaso() {
+  if (!estado.ultimoRepaso) return 'Todavía no hiciste ninguno';
+  const d = diasEntre(estado.ultimoRepaso, hoyISO());
+  if (d <= 0) return 'Último repaso: hoy';
+  if (d === 1) return 'Último repaso: ayer';
+  return `Último repaso: hace ${d} días`;
+}
+
+/* ---------- HOY ---------- */
+function renderHoy() {
+  const hoy = hoyISO();
+  const pend = pendientes();
+  const paraHoy = ordenar(pend.filter(t => (t.lista === 'mias' || t.lista === 'bandeja') && t.fecha && t.fecha <= hoy));
+  const delegadas = ordenar(pend.filter(t => t.lista === 'delegadas' && t.fecha && t.fecha <= hoy));
+  const tres = tresDe(hoy);
+  const atrasado = !estado.ultimoRepaso || diasEntre(estado.ultimoRepaso, hoy) > 2;
+
+  const slots = tres.map((id, i) => {
+    const t = id && buscar(id);
+    if (!t) return `
+      <button class="slot vacio" data-accion="elegir-slot" data-slot="${i}">
+        <span class="slot-num">${i + 1}</span> Elegir tarea${puedeArrastrar ? ' o arrastrarla acá' : ''}
+      </button>`;
+    const L = LISTAS[t.lista];
+    return `
+      <div class="slot ${t.completada ? 'hecho completada' : ''}" data-slot="${i}" data-id="${t.id}">
+        <span class="slot-num">${t.completada ? '<i class="bi bi-check"></i>' : i + 1}</span>
+        <button class="check" data-accion="completar" style="--c:${L.color}" aria-label="Completar"><span><i class="bi bi-check"></i></span></button>
+        <div class="fila-texto" data-accion="editar">
+          <div class="fila-titulo">${esc(t.titulo)}</div>
+          ${t.fecha ? `<div class="fila-meta"><span class="${!t.completada && t.fecha < hoy ? 'vencida' : ''}"><i class="bi bi-calendar3"></i>${formatFecha(t.fecha)}${t.hora ? ' ' + formatHora(t.hora) : ''}</span></div>` : ''}
+        </div>
+        <button class="btn-icono" data-accion="quitar-slot" data-slot="${i}" aria-label="Sacar de los tres"><i class="bi bi-x-lg" style="font-size:16px;color:var(--texto2)"></i></button>
+      </div>`;
+  }).join('');
+
+  $('#vista-hoy').innerHTML = `
+    <div class="cabecera">
+      <div class="min-w-0"><div class="cabecera-sub">${fechaLarga(hoy)}</div><h1>Hoy</h1></div>
+      <button class="btn-icono" data-accion="ajustes" aria-label="Ajustes"><i class="bi bi-gear"></i></button>
+    </div>
+
+    <button class="tarjeta-repaso" data-accion="repaso">
+      <span class="circ" style="--c:var(--c-mias)"><i class="bi bi-check2-square"></i></span>
+      <span class="flex-grow-1 min-w-0">
+        <span class="d-block fw-semibold">Hacer el repaso</span>
+        <small class="${atrasado ? 'aviso-naranja' : 'text-secundario'}">${textoUltimoRepaso()}</small>
+      </span>
+      <i class="bi bi-chevron-right text-secundario"></i>
+    </button>
+
+    <h2 class="seccion"><i class="bi bi-sun"></i> Para hoy <span class="cuenta">${paraHoy.length || ''}</span></h2>
+    ${paraHoy.length ? `<div class="grupo">${paraHoy.map(t => fila(t, { arrastrable: true })).join('')}</div>`
+                     : vacio('Nada pendiente para hoy.', 'Tocá + para anotar algo antes de que se te vaya.')}
+
+    <h2 class="seccion"><i class="bi bi-people"></i> Delegadas que tenés que controlar <span class="cuenta">${delegadas.length || ''}</span></h2>
+    ${delegadas.length ? `<div class="grupo">${delegadas.map(t => fila(t, { arrastrable: true })).join('')}</div>`
+                       : vacio('Nada que controlar hoy.')}
+
+    <h2 class="seccion"><i class="bi bi-3-circle"></i> Tres para hoy</h2>
+    <p class="ayuda">Si hacés solo estas tres, el día valió.</p>
+    <div class="slots">${slots}</div>`;
+}
+
+/* ---------- LISTAS ---------- */
+function renderListas() {
+  const pend = pendientes();
+  const tarjetas = ORDEN_LISTAS.map(k => {
+    const L = LISTAS[k];
+    const n = pend.filter(t => t.lista === k).length;
+    return `
+      <button class="tarjeta-lista ${k === listaSel ? 'activa' : ''}" data-accion="lista" data-lista="${k}" style="--c:${L.color}">
+        <span class="d-flex align-items-center w-100"><span class="circ"><i class="bi ${L.icono}"></i></span><span class="cuenta">${n}</span></span>
+        <span class="nombre">${L.nombre}</span>
+      </button>`;
+  }).join('');
+
+  const L = LISTAS[listaSel];
+  const items = ordenar(pend.filter(t => t.lista === listaSel));
+  const hechas = estado.tareas.filter(t => t.completada && t.lista === listaSel)
+    .sort((a, b) => (b.completadaEl || '').localeCompare(a.completadaEl || ''));
+  const textosVacio = {
+    bandeja: 'La bandeja está vacía. Lo que anotes con + cae acá.',
+    mias: 'No tenés nada pendiente acá.',
+    delegadas: 'No estás esperando nada de nadie.',
+    algundia: 'Nada guardado para algún día.',
+  };
+
+  $('#listasCuerpo').innerHTML = `
+    <div class="tarjetas-listas">${tarjetas}</div>
+    <h2 class="titulo-lista" style="color:${L.color}">${L.nombre}</h2>
+    ${items.length ? `<div class="grupo">${items.map(t => fila(t)).join('')}</div>` : vacio(textosVacio[listaSel])}
+    ${listaSel === 'bandeja' && items.length ? `<button class="btn-agregar-dia" data-accion="repaso"><i class="bi bi-check2-square"></i> Ordenar la bandeja con el repaso</button>` : ''}
+    ${hechas.length ? `
+      <details class="completadas" ${completadasAbiertas ? 'open' : ''}>
+        <summary>Completadas (${hechas.length})</summary>
+        <div class="grupo">${hechas.slice(0, 100).map(t => fila(t)).join('')}</div>
+      </details>` : ''}`;
+}
+
+/* ---------- CALENDARIO ---------- */
+function colorDeTarea(t) {
+  if (t.completada) return 'var(--separador)';
+  if (t.fecha < hoyISO()) return 'var(--c-rojo)';
+  return LISTAS[t.lista].color;
+}
+
+function renderCalendario() {
+  if (!window.FullCalendar) {
+    $('#cal').innerHTML = '<div class="p-3 text-secundario">No se pudo cargar el calendario. Revisá la conexión a internet y recargá la página.</div>';
+    renderDia();
+    return;
+  }
+  if (!cal) {
+    cal = new FullCalendar.Calendar($('#cal'), {
+      locale: 'es',
+      firstDay: 1,
+      initialView: 'dayGridMonth',
+      height: 'auto',
+      fixedWeekCount: false,
+      headerToolbar: { left: 'prev', center: 'title', right: 'next' },
+      footerToolbar: { left: 'irHoy', right: 'dayGridMonth,dayGridWeek' },
+      customButtons: { irHoy: { text: 'Hoy', click: () => { cal.today(); seleccionarDia(hoyISO()); } } },
+      buttonText: { month: 'Mes', week: 'Semana' },
+      buttonHints: { prev: 'Anterior', next: 'Siguiente' },
+      events: (info, ok) => ok(estado.tareas.filter(t => t.fecha).map(t => ({
+        id: t.id, title: t.titulo, start: t.fecha, allDay: true,
+        classNames: ['ev-tarea'], extendedProps: { tarea: t },
+      }))),
+      eventOrder: (a, b) => (a.extendedProps.tarea.hora || '').localeCompare(b.extendedProps.tarea.hora || ''),
+      // En el mes, un punto por tarea; en la semana, punto + título
+      eventContent: arg => {
+        const t = arg.event.extendedProps.tarea;
+        const punto = `<span class="punto" style="background:${colorDeTarea(t)}"></span>`;
+        if (arg.view.type === 'dayGridMonth') return { html: punto };
+        return { html: `<span class="evento-semana">${punto}<span>${t.hora ? formatHora(t.hora) + ' ' : ''}${esc(t.titulo)}</span></span>` };
+      },
+      dayCellDidMount: arg => { if (aISO(arg.date) === diaSel) arg.el.classList.add('dia-sel'); },
+      dateClick: info => seleccionarDia(info.dateStr),
+      eventClick: info => seleccionarDia(info.event.startStr),
+    });
+    cal.render();
+  } else {
+    cal.updateSize();
+    cal.refetchEvents();
+  }
+  renderDia();
+}
+
+function seleccionarDia(iso) {
+  diaSel = iso;
+  document.querySelectorAll('#cal td.fc-daygrid-day[data-date]')
+    .forEach(c => c.classList.toggle('dia-sel', c.dataset.date === iso));
+  renderDia();
+}
+
+function renderDia() {
+  const items = ordenar(estado.tareas.filter(t => t.fecha === diaSel))
+    .sort((a, b) => Number(a.completada) - Number(b.completada));
+  $('#calDia').innerHTML = `
+    <h2 class="seccion">${fechaLarga(diaSel)}${diaSel === hoyISO() ? ' · hoy' : ''}<span class="cuenta">${items.length || ''}</span></h2>
+    ${items.length ? `<div class="grupo">${items.map(t => fila(t, { mostrarLista: true })).join('')}</div>` : vacio('Sin tareas este día.')}
+    <button class="btn-agregar-dia" data-accion="captura-dia"><i class="bi bi-plus-circle"></i> Agregar tarea para este día</button>`;
+}
+
+/* ---------- Navegación y dibujo general ---------- */
+function actualizarInsignias() {
+  const n = pendientes().filter(t => t.lista === 'bandeja').length;
+  document.querySelectorAll('[data-insignia]').forEach(b => { b.hidden = !n; b.textContent = n; });
+}
+
+function render() {
+  if (vista === 'hoy') renderHoy();
+  else if (vista === 'listas') renderListas();
+  else renderCalendario();
+  actualizarInsignias();
+}
+
+function irA(v) {
+  vista = v;
+  estado.ajustes.vista = v;
+  guardar();
+  document.querySelectorAll('.vista').forEach(s => { s.hidden = s.id !== `vista-${v}`; });
+  document.querySelectorAll('[data-vista]').forEach(b => b.classList.toggle('activo', b.dataset.vista === v));
+  render();
+  window.scrollTo(0, 0);
+}
+
+/* =========================================================
+   EDITAR TAREA
+   ========================================================= */
+let editandoId = null;
+let mEditar, mElegir, mRepaso, mAjustes;
+
+function abrirEditar(id) {
+  const t = buscar(id);
+  if (!t || !mEditar) return;
+  editandoId = id;
+  $('#edTitulo').value = t.titulo;
+  $('#edNotas').value = t.notas;
+  $('#edLista').value = t.lista;
+  $('#edDelegado').value = t.delegadoA || '';
+  $('#edFecha').value = t.fecha || '';
+  $('#edHora').value = t.hora || '';
+  $('#edRecordatorio').value = t.recordatorio == null ? '' : String(t.recordatorio);
+  $('#edRecurrencia').value = t.recurrencia || '';
+  document.querySelector(`input[name="edPrioridad"][value="${t.prioridad}"]`).checked = true;
+  $('#btnCompletar span').textContent = t.completada ? 'Marcar como pendiente' : 'Completar';
+  $('#btnHoy3').hidden = t.completada || tresDe(hoyISO()).includes(t.id);
+  mostrarDelegado();
+  mEditar.show();
+}
+
+function mostrarDelegado() { $('#filaDelegado').hidden = $('#edLista').value !== 'delegadas'; }
+
+function guardarEdicion() {
+  const t = buscar(editandoId);
+  if (!t) return;
+  const titulo = $('#edTitulo').value.trim();
+  if (!titulo) { $('#edTitulo').focus(); aviso('Poné un título'); return; }
+  const lista = $('#edLista').value;
+  const rec = $('#edRecordatorio').value;
+  Object.assign(t, {
+    titulo,
+    notas: $('#edNotas').value.trim(),
+    lista,
+    delegadoA: lista === 'delegadas' ? ($('#edDelegado').value.trim() || null) : null,
+    fecha: $('#edFecha').value || null,
+    hora: $('#edHora').value || null,
+    recordatorio: rec === '' ? null : Number(rec),
+    recurrencia: $('#edRecurrencia').value || null,
+    prioridad: document.querySelector('input[name="edPrioridad"]:checked')?.value || 'normal',
+  });
+  if (t.hora && !t.fecha) t.fecha = hoyISO();
+  guardar();
+  mEditar.hide();
+  render();
+}
+
+/* =========================================================
+   ELEGIR TAREA PARA "TRES PARA HOY"
+   ========================================================= */
+let slotElegido = 0;
+
+function abrirElegir(i) {
+  if (!mElegir) return;
+  slotElegido = i;
+  $('#elegirBuscar').value = '';
+  renderElegir();
+  mElegir.show();
+}
+
+function renderElegir() {
+  const hoy = hoyISO();
+  const q = sinAcentos($('#elegirBuscar').value.trim().toLowerCase());
+  const ya = tresDe(hoy);
+  const peso = t => (t.fecha && t.fecha <= hoy ? 0 : 10) + ORDEN_LISTAS.indexOf(t.lista === 'bandeja' ? 'mias' : t.lista);
+  const cands = ordenar(pendientes().filter(t => !ya.includes(t.id) && (!q || sinAcentos(t.titulo.toLowerCase()).includes(q))))
+    .sort((a, b) => peso(a) - peso(b));
+  $('#elegirLista').innerHTML = cands.length
+    ? cands.map(t => {
+        const L = LISTAS[t.lista];
+        return `<button class="fila-elegir" data-elegir="${t.id}">
+          <span class="punto" style="background:${L.color};width:10px;height:10px"></span>
+          <span class="min-w-0 flex-grow-1"><span class="fila-titulo d-block">${esc(t.titulo)}</span>
+          <span class="fila-meta">${L.corto}${t.fecha ? ` · <span class="${t.fecha < hoy ? 'vencida' : ''}">${formatFecha(t.fecha)}</span>` : ''}</span></span>
+        </button>`;
+      }).join('')
+    : '<div class="vacio">No hay tareas para elegir.</div>';
+}
+
+/* =========================================================
+   REPASO GUIADO (4 pasos)
+   ========================================================= */
+const rep = { paso: 1, ids: [] };
+const PASOS = {
+  1: { titulo: 'Vaciá la bandeja', sub: 'A cada tarea dale un lugar y, si tiene, una fecha.' },
+  2: { titulo: 'Delegadas para controlar', sub: '¿Ya te respondieron? Si no, poné cuándo volvés a preguntar.' },
+  3: { titulo: 'Algún día', sub: '¿Alguna es para esta semana?' },
+  4: { titulo: 'Las tres de mañana', sub: 'Elegí hasta tres. Mañana las vas a encontrar en Hoy.' },
+};
+
+function abrirRepaso() {
+  if (!mRepaso) return;
+  rep.paso = 1;
+  prepararPaso();
+  mRepaso.show();
+}
+
+// Cada paso toma una "foto" de las tareas al empezar, así no desaparecen de la pantalla al moverlas
+function prepararPaso() {
+  const hoy = hoyISO();
+  const p = pendientes();
+  if (rep.paso === 1) rep.ids = ordenar(p.filter(t => t.lista === 'bandeja')).map(t => t.id);
+  if (rep.paso === 2) rep.ids = ordenar(p.filter(t => t.lista === 'delegadas' && (!t.fecha || t.fecha <= hoy))).map(t => t.id);
+  if (rep.paso === 3) rep.ids = ordenar(p.filter(t => t.lista === 'algundia')).map(t => t.id);
+  if (rep.paso === 4) {
+    const man = sumarDias(hoy, 1);
+    const peso = t => (t.fecha === man ? 0 : t.fecha && t.fecha < man ? 1 : 2);
+    rep.ids = ordenar(p.filter(t => t.lista !== 'algundia')).sort((a, b) => peso(a) - peso(b)).map(t => t.id);
+  }
+  renderPaso();
+}
+
+function renderPaso() {
+  const hoy = hoyISO(), man = sumarDias(hoy, 1);
+  const P = PASOS[rep.paso];
+  $('#tituloRepaso').textContent = `Paso ${rep.paso} de 4`;
+  $('#repasoProgreso').style.width = `${rep.paso * 25}%`;
+  $('#repasoAtras').style.visibility = rep.paso === 1 ? 'hidden' : 'visible';
+  $('#repasoSiguiente').textContent = rep.paso === 4 ? 'Terminar' : 'Siguiente';
+
+  const tareas = rep.ids.map(buscar).filter(Boolean);
+  let cuerpo = '';
+
+  if (rep.paso === 1) {
+    cuerpo = tareas.length ? tareas.map(t => {
+      const listo = t.lista !== 'bandeja';
+      const boton = k => `<button class="pill ${t.lista === k ? 'activo' : ''}" style="--c:${LISTAS[k].color}" data-rep="mover" data-lista="${k}"><i class="bi ${LISTAS[k].icono}"></i>${LISTAS[k].corto}</button>`;
+      return `<div class="rep-item" data-id="${t.id}">
+        <div class="fila-titulo">${listo ? '<i class="bi bi-check-circle-fill" style="color:var(--c-verde)"></i> ' : ''}${esc(t.titulo)}</div>
+        <div class="acciones">${boton('mias')}${boton('delegadas')}${boton('algundia')}</div>
+        <div class="rep-campos">
+          <input type="date" data-rep-campo="fecha" value="${t.fecha || ''}" aria-label="Fecha">
+          ${t.lista === 'delegadas' ? `<input data-rep-campo="delegadoA" value="${esc(t.delegadoA || '')}" placeholder="¿A quién?" aria-label="Delegada a">` : ''}
+        </div>
+      </div>`;
+    }).join('') : vacio('La bandeja está vacía. 👌', 'Seguí al paso siguiente.');
+  }
+
+  if (rep.paso === 2) {
+    cuerpo = tareas.length ? tareas.map(t => `
+      <div class="rep-item ${t.completada ? 'hecho' : ''}" data-id="${t.id}">
+        <div class="fila-titulo">${t.completada ? '<i class="bi bi-check-circle-fill" style="color:var(--c-verde)"></i> ' : ''}${esc(t.titulo)}</div>
+        <div class="fila-meta">
+          ${t.delegadoA ? `<span class="delegado"><i class="bi bi-person-fill"></i>${esc(t.delegadoA)}</span>` : '<span>Sin responsable</span>'}
+          ${t.fecha ? `<span class="${t.fecha < hoy ? 'vencida' : ''}"><i class="bi bi-calendar3"></i>${formatFecha(t.fecha)}</span>` : '<span>Sin fecha de control</span>'}
+        </div>
+        ${t.completada ? '' : `
+        <div class="acciones">
+          <button class="pill" style="--c:var(--c-verde)" data-rep="hecha"><i class="bi bi-check-lg"></i>Ya está</button>
+          <button class="pill" data-rep="posponer" data-dias="1">Mañana</button>
+          <button class="pill" data-rep="posponer" data-dias="3">En 3 días</button>
+          <button class="pill" data-rep="posponer" data-dias="7">En una semana</button>
+        </div>`}
+      </div>`).join('') : vacio('Nada vencido de lo delegado.', 'Buenísimo.');
+  }
+
+  if (rep.paso === 3) {
+    cuerpo = tareas.length ? tareas.map(t => {
+      const movida = t.lista !== 'algundia';
+      return `<div class="rep-item" data-id="${t.id}">
+        <div class="fila-titulo">${movida ? '<i class="bi bi-check-circle-fill" style="color:var(--c-verde)"></i> ' : ''}${esc(t.titulo)}</div>
+        ${movida
+          ? `<div class="rep-campos"><input type="date" data-rep-campo="fecha" value="${t.fecha || ''}" aria-label="Fecha"></div>
+             <div class="acciones"><button class="pill" data-rep="mover" data-lista="algundia">Mejor no, dejala en Algún día</button></div>`
+          : `<div class="acciones">
+               <button class="pill" style="--c:var(--c-mias)" data-rep="semana"><i class="bi bi-calendar-check"></i>Sí, esta semana</button>
+               <button class="pill peligro" data-rep="borrar"><i class="bi bi-trash"></i>Ya no va</button>
+             </div>`}
+      </div>`;
+    }).join('') : vacio('Algún día está vacío.');
+  }
+
+  if (rep.paso === 4) {
+    const sel = tresDe(man);
+    const n = sel.filter(Boolean).length;
+    cuerpo = `<p class="ayuda mb-2">${fechaLarga(man)} · elegidas ${n} de 3</p>` + (tareas.length
+      ? `<div class="grupo">${tareas.map(t => {
+          const pos = sel.indexOf(t.id);
+          return `<button class="elegible ${pos >= 0 ? 'sel' : ''}" data-id="${t.id}" data-rep="elegir3">
+            <span class="marca">${pos >= 0 ? pos + 1 : ''}</span>
+            <span class="min-w-0"><span class="fila-titulo d-block">${esc(t.titulo)}</span>
+            <span class="fila-meta"><span style="color:${LISTAS[t.lista].color}">${LISTAS[t.lista].corto}</span>${t.fecha ? `<span class="${t.fecha < hoy ? 'vencida' : ''}">${formatFecha(t.fecha)}</span>` : ''}</span></span>
+          </button>`;
+        }).join('')}</div>`
+      : vacio('No hay tareas pendientes.'));
+  }
+
+  $('#repasoCuerpo').innerHTML = `<div class="rep-titulo">${P.titulo}</div><div class="rep-sub">${P.sub}</div>${cuerpo}`;
+}
+
+function accionRepaso(e) {
+  const b = e.target.closest('[data-rep]');
+  if (!b) return;
+  const id = b.closest('[data-id]')?.dataset.id;
+  const t = buscar(id);
+  if (!t) return;
+  const hoy = hoyISO();
+  switch (b.dataset.rep) {
+    case 'mover':
+      t.lista = b.dataset.lista;
+      if (t.lista !== 'delegadas') t.delegadoA = null;
+      break;
+    case 'hecha':
+      alternarCompletada(id);
+      renderPaso();
+      return;
+    case 'posponer':
+      t.fecha = sumarDias(hoy, Number(b.dataset.dias));
+      break;
+    case 'semana':
+      t.lista = 'mias';
+      if (!t.fecha) t.fecha = sumarDias(hoy, 1);
+      break;
+    case 'borrar':
+      borrarTarea(id);
+      renderPaso();
+      return;
+    case 'elegir3': {
+      const man = sumarDias(hoy, 1);
+      let sel = tresDe(man).filter(Boolean);
+      if (sel.includes(id)) sel = sel.filter(x => x !== id);
+      else if (sel.length >= 3) { aviso('Ya elegiste tres. Sacá una para cambiarla.'); return; }
+      else sel.push(id);
+      estado.tresPorFecha[man] = [...sel, null, null, null].slice(0, 3);
+      break;
+    }
+  }
+  guardar(); render(); renderPaso();
+}
+
+function terminarRepaso() {
+  estado.ultimoRepaso = hoyISO();
+  guardar();
+  mRepaso.hide();
+  render();
+  aviso('Repaso hecho. Mañana arrancás con tus tres.');
+}
+
+/* =========================================================
+   RECORDATORIOS (Notifications API)
+   ========================================================= */
+const hayNotificaciones = () => 'Notification' in window;
+
+async function pedirPermiso(silencioso = false) {
+  if (!hayNotificaciones()) { if (!silencioso) aviso('Este navegador no permite notificaciones acá.'); return; }
+  try {
+    const r = await Notification.requestPermission();
+    estado.ajustes.permisoPedido = true;
+    guardar();
+    renderAjustes();
+    if (!silencioso) aviso(r === 'granted' ? 'Recordatorios activados' : 'Sin permiso: los avisos salen solo dentro de la app');
+  } catch (err) { console.warn(err); }
+}
+
+function avisarTarea(t) {
+  const cuando = t.recordatorio ? `${AVISOS[t.recordatorio]} · ${formatHora(t.hora)}` : `Ahora · ${formatHora(t.hora)}`;
+  if (hayNotificaciones() && Notification.permission === 'granted') {
+    try {
+      const n = new Notification(t.titulo, { body: cuando + (t.delegadoA ? ` · ${t.delegadoA}` : ''), tag: t.id });
+      n.onclick = () => { window.focus(); abrirEditar(t.id); n.close(); };
+    } catch (err) { console.warn('No se pudo mostrar la notificación', err); }
+  }
+  // Siempre, además, el aviso adentro de la app (en iPhone es el único que funciona)
+  aviso(`🔔 ${t.titulo}`, 'Ver', () => abrirEditar(t.id));
+  navigator.vibrate?.(200);
+}
+
+// Corre cada 30 segundos. Avisa una sola vez por tarea (y de nuevo si se le cambia la fecha u hora).
+function revisarRecordatorios() {
+  const ahora = Date.now();
+  let cambio = false;
+  for (const t of estado.tareas) {
+    if (t.completada || !t.fecha || !t.hora || t.recordatorio == null) continue;
+    const marca = `${t.fecha}T${t.hora}|${t.recordatorio}`;
+    if (t.notificado === marca) continue;
+    const [h, m] = t.hora.split(':').map(Number);
+    const d = deISO(t.fecha); d.setHours(h, m, 0, 0);
+    const momento = d.getTime() - t.recordatorio * 60000;
+    if (ahora < momento) continue;
+    t.notificado = marca;
+    cambio = true;
+    if (ahora - momento > 6 * 3600000) continue;   // si pasaron más de 6 horas no tiene sentido avisar
+    avisarTarea(t);
+  }
+  if (cambio) guardar();
+}
+
+/* =========================================================
+   AJUSTES, TEMA, EXPORTAR / IMPORTAR
+   ========================================================= */
+function temaEfectivo() {
+  const t = estado.ajustes.tema;
+  if (t === 'claro') return 'light';
+  if (t === 'oscuro') return 'dark';
+  return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+function aplicarTema() {
+  const t = temaEfectivo();
+  document.documentElement.setAttribute('data-bs-theme', t);
+  document.querySelector('meta[name="theme-color"]').content = t === 'dark' ? '#000000' : '#f2f2f7';
+}
+
+function renderAjustes() {
+  $('#ajTema').value = estado.ajustes.tema;
+  let txt = 'No disponible en este navegador';
+  if (hayNotificaciones()) {
+    txt = { granted: 'Activadas', denied: 'Bloqueadas (habilitalas desde el candado de la barra)', default: 'Sin permiso todavía' }[Notification.permission];
+  }
+  $('#ajNotif').textContent = txt;
+  $('#ajPermiso').hidden = !hayNotificaciones() || Notification.permission === 'granted';
+  const pend = pendientes().length;
+  $('#ajResumen').textContent = `${estado.tareas.length} tareas guardadas, ${pend} pendientes.`;
+}
+
+function exportar() {
+  const blob = new Blob([JSON.stringify(estado, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `tareas-${hoyISO()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function importar(archivo) {
+  const lector = new FileReader();
+  lector.onload = () => {
+    try {
+      const nuevo = normalizar(JSON.parse(lector.result));
+      if (!confirm(`Esto reemplaza tus ${estado.tareas.length} tareas por las ${nuevo.tareas.length} del archivo. ¿Seguimos?`)) return;
+      nuevo.ajustes.vista = vista;
+      estado = nuevo;
+      guardar(); aplicarTema(); renderAjustes(); render();
+      aviso('Datos importados');
+    } catch (err) {
+      aviso('No pude leer ese archivo: ' + err.message);
+    }
+  };
+  lector.readAsText(archivo);
+}
+
+function borrarTodo() {
+  if (!confirm('¿Borrar TODAS las tareas? No se puede deshacer.')) return;
+  if (!confirm('¿Seguro? Si querés, exportá antes una copia.')) return;
+  const tema = estado.ajustes.tema;
+  estado = estadoVacio();
+  estado.ajustes.tema = tema;
+  estado.ajustes.permisoPedido = true;
+  guardar(); renderAjustes(); render();
+  aviso('Listo, arrancás de cero');
+}
+
+/* =========================================================
+   LOGIN
+   Ojo: esto NO es seguridad. El usuario y la contraseña están escritos acá, y el código
+   es público en GitHub Pages: cualquiera los ve con "ver código fuente". Solo frena a quien
+   abre la URL sin saber mirar. Las tareas nunca están en el servidor: viven en el navegador
+   de cada dispositivo. Quedó así por decisión del dueño el 2026-09-23 (ver docs/CONTEXTO.md).
+   ========================================================= */
+const LOGIN_USUARIO = 'admin';
+const LOGIN_CLAVE = '1234';
+const CLAVE_SESION = 'tareasApp.sesion';   // la sesión queda recordada en el dispositivo
+
+function sesionAbierta() {
+  try { return localStorage.getItem(CLAVE_SESION) === '1'; } catch (err) { return false; }
+}
+
+function mostrarLogin() {
+  $('.app').hidden = true;
+  $('#login').hidden = false;
+  $('#loginUsuario').focus();
+}
+
+function intentarLogin(e) {
+  e.preventDefault();
+  const usuario = $('#loginUsuario').value.trim().toLowerCase();
+  const clave = $('#loginClave').value;
+  if (usuario !== LOGIN_USUARIO || clave !== LOGIN_CLAVE) {
+    $('#loginError').hidden = false;
+    $('#loginClave').value = '';
+    $('#loginClave').focus();
+    return;
+  }
+  try { localStorage.setItem(CLAVE_SESION, '1'); } catch (err) { /* sin storage, dura hasta recargar */ }
+  $('#login').hidden = true;
+  $('.app').hidden = false;
+  $('#loginClave').blur();
+  iniciar();
+}
+
+function cerrarSesion() {
+  try { localStorage.removeItem(CLAVE_SESION); } catch (err) { /* nada */ }
+  location.reload();
+}
+
+/* =========================================================
+   EVENTOS
+   ========================================================= */
+let swipe = null;          // estado del deslizamiento en curso
+let swipeReciente = false; // evita que el toque final del swipe abra la tarea
+
+function conectarEventos() {
+  // Delegación: todos los botones con data-accion
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-accion]');
+    if (!el) return;
+    const id = el.closest('[data-id]')?.dataset.id;
+    switch (el.dataset.accion) {
+      case 'vista': irA(el.dataset.vista); break;
+      case 'completar': if (!swipeReciente) alternarCompletada(id); break;
+      case 'editar': if (!swipeReciente) abrirEditar(id); break;
+      case 'lista': listaSel = el.dataset.lista; render(); break;
+      case 'elegir-slot': abrirElegir(Number(el.dataset.slot)); break;
+      case 'quitar-slot': {
+        const a = tresDe(hoyISO()); a[Number(el.dataset.slot)] = null;
+        estado.tresPorFecha[hoyISO()] = a; guardar(); render(); break;
+      }
+      case 'repaso': abrirRepaso(); break;
+      case 'ajustes': renderAjustes(); mAjustes?.show(); break;
+      case 'captura': abrirCaptura(); break;
+      case 'captura-dia': abrirCaptura(diaSel); break;
+    }
+  });
+
+  // Recordar si "Completadas" está abierta (toggle no burbujea: se escucha en captura)
+  document.addEventListener('toggle', e => {
+    if (e.target.matches?.('details.completadas')) completadasAbiertas = e.target.open;
+  }, true);
+
+  // Swipe a la derecha para completar (táctil)
+  document.addEventListener('touchstart', e => {
+    const c = e.target.closest('.fila-cont');
+    if (!c) return;
+    const p = e.touches[0];
+    swipe = { c, x: p.clientX, y: p.clientY, dx: 0, activo: false };
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!swipe) return;
+    const p = e.touches[0];
+    const dx = p.clientX - swipe.x, dy = p.clientY - swipe.y;
+    if (!swipe.activo) {
+      if (dx > 10 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        swipe.activo = true;
+        swipe.c.style.transition = 'none';
+        swipe.c.parentElement.classList.add('deslizando');
+      }
+      else if (Math.abs(dy) > 10 || dx < -10) { swipe = null; return; }
+    }
+    if (swipe.activo) { swipe.dx = Math.max(0, dx); swipe.c.style.transform = `translateX(${swipe.dx}px)`; }
+  }, { passive: true });
+  const finSwipe = () => {
+    if (!swipe) return;
+    const { c, dx, activo } = swipe;
+    swipe = null;
+    if (!activo) return;
+    swipeReciente = true;
+    setTimeout(() => { swipeReciente = false; }, 400);
+    c.style.transition = '';
+    if (dx > 90) {
+      c.style.transform = 'translateX(100%)';
+      const id = c.closest('[data-id]').dataset.id;
+      setTimeout(() => alternarCompletada(id), 180);
+    } else {
+      c.style.transform = '';
+      setTimeout(() => c.parentElement?.classList.remove('deslizando'), 220);
+    }
+  };
+  document.addEventListener('touchend', finSwipe);
+  document.addEventListener('touchcancel', finSwipe);
+
+  // Arrastrar tareas a los "Tres para hoy" (desktop)
+  document.addEventListener('dragstart', e => {
+    const f = e.target.closest?.('.fila[draggable="true"]');
+    if (!f) return;
+    e.dataTransfer.setData('text/plain', f.dataset.id);
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  document.addEventListener('dragover', e => {
+    const s = e.target.closest?.('.slot');
+    if (!s) return;
+    e.preventDefault();
+    s.classList.add('sobre');
+  });
+  document.addEventListener('dragleave', e => { e.target.closest?.('.slot')?.classList.remove('sobre'); });
+  document.addEventListener('drop', e => {
+    const s = e.target.closest?.('.slot');
+    if (!s) return;
+    e.preventDefault();
+    s.classList.remove('sobre');
+    const id = e.dataTransfer.getData('text/plain');
+    if (id && buscar(id)) asignarSlot(Number(s.dataset.slot), id);
+  });
+
+  // Captura rápida
+  $('#capturaForm').addEventListener('submit', e => { e.preventDefault(); crearDesdeCaptura(); });
+  $('#capturaInput').addEventListener('input', actualizarVistaPrevia);
+  $('#capturaInput').addEventListener('keydown', e => { if (e.key === 'Escape') cerrarCaptura(); });
+  $('#capturaFondo').addEventListener('click', cerrarCaptura);
+  // Atajo de teclado en desktop: "n" abre la captura
+  document.addEventListener('keydown', e => {
+    if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey &&
+        !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) && !document.querySelector('.modal.show')) {
+      e.preventDefault(); abrirCaptura();
+    }
+  });
+
+  // Editor
+  $('#btnGuardar').addEventListener('click', guardarEdicion);
+  $('#edTitulo').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); guardarEdicion(); } });
+  $('#edLista').addEventListener('change', mostrarDelegado);
+  $('#btnSinFecha').addEventListener('click', () => { $('#edFecha').value = ''; $('#edHora').value = ''; $('#edRecordatorio').value = ''; });
+  $('#btnCompletar').addEventListener('click', () => { const id = editandoId; mEditar.hide(); alternarCompletada(id); });
+  $('#btnEliminar').addEventListener('click', () => { const id = editandoId; mEditar.hide(); borrarTarea(id); });
+  $('#btnHoy3').addEventListener('click', () => {
+    const libre = tresDe(hoyISO()).indexOf(null);
+    if (libre < 0) { aviso('Ya tenés tres para hoy. Sacá una primero.'); return; }
+    guardarEdicion();
+    asignarSlot(libre, editandoId);
+    aviso(`Sumada como la ${libre + 1} de hoy`);
+  });
+
+  // Elegir para los tres
+  $('#elegirBuscar').addEventListener('input', renderElegir);
+  $('#elegirLista').addEventListener('click', e => {
+    const b = e.target.closest('[data-elegir]');
+    if (!b) return;
+    asignarSlot(slotElegido, b.dataset.elegir);
+    mElegir.hide();
+  });
+
+  // Repaso
+  $('#repasoCuerpo').addEventListener('click', accionRepaso);
+  $('#repasoCuerpo').addEventListener('change', e => {
+    const inp = e.target.closest('[data-rep-campo]');
+    if (!inp) return;
+    const t = buscar(inp.closest('[data-id]').dataset.id);
+    if (!t) return;
+    t[inp.dataset.repCampo] = inp.value.trim() || null;
+    guardar(); render();
+  });
+  $('#repasoAtras').addEventListener('click', () => { if (rep.paso > 1) { rep.paso--; prepararPaso(); } });
+  $('#repasoSiguiente').addEventListener('click', () => {
+    if (rep.paso < 4) { rep.paso++; prepararPaso(); $('#repasoCuerpo').scrollTop = 0; }
+    else terminarRepaso();
+  });
+
+  // Ajustes
+  $('#ajTema').addEventListener('change', e => { estado.ajustes.tema = e.target.value; guardar(); aplicarTema(); });
+  $('#ajPermiso').addEventListener('click', () => pedirPermiso());
+  $('#ajExportar').addEventListener('click', exportar);
+  $('#ajImportar').addEventListener('click', () => $('#ajArchivo').click());
+  $('#ajArchivo').addEventListener('change', e => { const f = e.target.files[0]; if (f) importar(f); e.target.value = ''; });
+  $('#ajBorrar').addEventListener('click', borrarTodo);
+  $('#ajSalir').addEventListener('click', cerrarSesion);
+
+  // El tema automático sigue al sistema
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', aplicarTema);
+
+  // Si la app está abierta en dos pestañas, se mantienen sincronizadas
+  window.addEventListener('storage', e => {
+    if (e.key !== CLAVE) return;
+    try { estado = cargar(); render(); } catch (err) { console.warn(err); }
+  });
+}
+
+/* =========================================================
+   ARRANQUE
+   ========================================================= */
+function iniciar() {
+  limpiarTres();
+
+  // Llenar el desplegable de listas del editor
+  $('#edLista').innerHTML = ORDEN_LISTAS.map(k => `<option value="${k}">${LISTAS[k].nombre}</option>`).join('');
+
+  if (window.bootstrap) {
+    mEditar = new bootstrap.Modal('#modalEditar');
+    mElegir = new bootstrap.Modal('#modalElegir');
+    mRepaso = new bootstrap.Modal('#modalRepaso');
+    mAjustes = new bootstrap.Modal('#modalAjustes');
+    $('#modalRepaso').addEventListener('hidden.bs.modal', render);
+  } else {
+    $('#avisoLibs').innerHTML = '<div class="sin-libs">No se cargaron las librerías (¿sin internet?). Podés anotar y completar tareas, pero editar, el repaso y el calendario necesitan conexión la primera vez.</div>';
+  }
+
+  conectarEventos();
+  irA(vista);
+
+  // Recordatorios: uno ya, y después cada 30 segundos. De paso, si cambió el día, se redibuja.
+  let ultimoDia = hoyISO();
+  revisarRecordatorios();
+  setInterval(() => {
+    revisarRecordatorios();
+    if (hoyISO() !== ultimoDia) { ultimoDia = hoyISO(); diaSel = ultimoDia; render(); }
+  }, 30000);
+
+  // Primera vez: pedir permiso de notificaciones. Se intenta al abrir, y si el navegador
+  // exige un gesto del usuario, se vuelve a pedir en el primer toque.
+  if (hayNotificaciones() && !estado.ajustes.permisoPedido && Notification.permission === 'default') {
+    pedirPermiso(true);
+    document.addEventListener('pointerdown', () => {
+      if (Notification.permission === 'default') pedirPermiso(true);
+    }, { once: true });
+  }
+}
+
+// El tema se aplica antes que nada, así el login también sale en claro u oscuro
+aplicarTema();
+$('#loginForm').addEventListener('submit', intentarLogin);
+if (sesionAbierta()) iniciar();
+else mostrarLogin();
+</script>
+</body>
+</html>
