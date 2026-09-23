@@ -119,8 +119,11 @@ Lo que **no** se pudo probar contra la base real es el camino con sesión (migra
 real, sincronización), porque el usuario de Auth no existe y lo tiene que crear el dueño: está
 probado contra un Supabase simulado que aplica los mismos controles que `schema.sql`. Falta:
 
-- crear el usuario en Authentication → Users y apagar las altas nuevas;
-- publicar (el commit está hecho y sin subir: publicado sin usuario, nadie podría entrar);
+- ~~crear el usuario en Authentication → Users y apagar las altas nuevas~~: hecho por el dueño
+  el 2026-09-23; verificado (un usuario confirmado, `disable_signup` en true en
+  `/auth/v1/settings`);
+- ~~publicar~~: publicado el 2026-09-23. En el sitio real: login a la vista, sin errores de
+  consola, service worker `tareas-v2` con 13 archivos guardados y la app instalable;
 - después del primer login, verificar desde la base que se subieron las tareas.
 
 **El MCP que Claude ya tenía conectado llega a `app-tareas`**, aunque `list_organizations` no
