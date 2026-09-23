@@ -84,7 +84,7 @@ button { -webkit-user-select: none; user-select: none; }
 .sidebar hr { border-color: var(--separador); opacity: 1; margin: 12px 4px; }
 
 main {
-  flex: 1; min-width: 0; width: 100%; max-width: 760px; margin: 0 auto;
+  flex: 1; min-width: 0; width: 100%; max-width: 1200px; margin: 0 auto;
   padding: calc(env(safe-area-inset-top) + 8px) 16px calc(150px + env(safe-area-inset-bottom));
 }
 @media (min-width: 992px) { main { padding: 24px 32px 120px; } }
@@ -184,6 +184,12 @@ main {
 }
 .aviso-naranja { color: var(--c-delegadas); }
 
+/* ---------- Hoy en pantallas anchas: tareas a la izquierda, "Tres para hoy" a la derecha ---------- */
+@media (min-width: 1100px) {
+  .hoy-columnas { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 0 32px; align-items: start; }
+  .hoy-lateral { position: sticky; top: 16px; }
+}
+
 /* ---------- Tres para hoy ---------- */
 .slots { display: grid; gap: 8px; }
 .slot {
@@ -271,6 +277,14 @@ details.completadas[open] summary::before { transform: rotate(90deg); }
   color: var(--bs-body-color); overflow: hidden; padding: 1px 2px;
 }
 .evento-semana .punto { margin-top: 4px; }
+/* En pantallas anchas el mes muestra el título de cada tarea, una por renglón */
+@media (min-width: 992px) {
+  .fc-dayGridMonth-view .fc-daygrid-day-events { display: block; padding: 0 3px 4px; }
+  .fc-dayGridMonth-view .fc-daygrid-event-harness { margin-bottom: 2px !important; }
+  .fc .fc-daygrid-day-frame { min-height: 96px; }
+  .fc-dayGridMonth-view .evento-semana > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+.completado-cal { text-decoration: line-through; color: var(--texto2); }
 .btn-agregar-dia {
   display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 8px; padding: 0 4px;
   border: 0; background: none; color: var(--c-mias); font-size: 16px;
@@ -962,6 +976,7 @@ let completadasAbiertas = false;
 let diaSel = hoyISO();
 let cal = null;
 const puedeArrastrar = matchMedia('(pointer: fine)').matches;
+const pantallaAncha = matchMedia('(min-width: 992px)');   // mismo corte que el CSS del calendario
 
 function vacio(titulo, texto = '') {
   return `<div class="vacio"><strong>${titulo}</strong>${texto}</div>`;
@@ -1046,17 +1061,22 @@ function renderHoy() {
       <i class="bi bi-chevron-right text-secundario"></i>
     </button>
 
-    <h2 class="seccion"><i class="bi bi-sun"></i> Para hoy <span class="cuenta">${paraHoy.length || ''}</span></h2>
-    ${paraHoy.length ? `<div class="grupo">${paraHoy.map(t => fila(t, { arrastrable: true })).join('')}</div>`
-                     : vacio('Nada pendiente para hoy.', 'Tocá + para anotar algo antes de que se te vaya.')}
+    <div class="hoy-columnas">
+      <div class="min-w-0">
+        <h2 class="seccion"><i class="bi bi-sun"></i> Para hoy <span class="cuenta">${paraHoy.length || ''}</span></h2>
+        ${paraHoy.length ? `<div class="grupo">${paraHoy.map(t => fila(t, { arrastrable: true })).join('')}</div>`
+                         : vacio('Nada pendiente para hoy.', 'Tocá + para anotar algo antes de que se te vaya.')}
 
-    <h2 class="seccion"><i class="bi bi-people"></i> Delegadas que tenés que controlar <span class="cuenta">${delegadas.length || ''}</span></h2>
-    ${delegadas.length ? `<div class="grupo">${delegadas.map(t => fila(t, { arrastrable: true })).join('')}</div>`
-                       : vacio('Nada que controlar hoy.')}
-
-    <h2 class="seccion"><i class="bi bi-3-circle"></i> Tres para hoy</h2>
-    <p class="ayuda">Si hacés solo estas tres, el día valió.</p>
-    <div class="slots">${slots}</div>`;
+        <h2 class="seccion"><i class="bi bi-people"></i> Delegadas que tenés que controlar <span class="cuenta">${delegadas.length || ''}</span></h2>
+        ${delegadas.length ? `<div class="grupo">${delegadas.map(t => fila(t, { arrastrable: true })).join('')}</div>`
+                           : vacio('Nada que controlar hoy.')}
+      </div>
+      <div class="hoy-lateral min-w-0">
+        <h2 class="seccion"><i class="bi bi-3-circle"></i> Tres para hoy</h2>
+        <p class="ayuda">Si hacés solo estas tres, el día valió.</p>
+        <div class="slots">${slots}</div>
+      </div>
+    </div>`;
 }
 
 /* ---------- LISTAS ---------- */
@@ -1125,13 +1145,15 @@ function renderCalendario() {
         classNames: ['ev-tarea'], extendedProps: { tarea: t },
       }))),
       eventOrder: (a, b) => (a.extendedProps.tarea.hora || '').localeCompare(b.extendedProps.tarea.hora || ''),
-      // En el mes, un punto por tarea; en la semana, punto + título
+      // En el mes del celular, un punto por tarea; en la semana, o en el mes con pantalla ancha, punto + título
       eventContent: arg => {
         const t = arg.event.extendedProps.tarea;
         const punto = `<span class="punto" style="background:${colorDeTarea(t)}"></span>`;
-        if (arg.view.type === 'dayGridMonth') return { html: punto };
-        return { html: `<span class="evento-semana">${punto}<span>${t.hora ? formatHora(t.hora) + ' ' : ''}${esc(t.titulo)}</span></span>` };
+        if (arg.view.type === 'dayGridMonth' && !pantallaAncha.matches) return { html: punto };
+        return { html: `<span class="evento-semana">${punto}<span class="${t.completada ? 'completado-cal' : ''}">${t.hora ? formatHora(t.hora) + ' ' : ''}${esc(t.titulo)}</span></span>` };
       },
+      // El título completo al pasar el mouse, porque en el mes se recorta
+      eventDidMount: arg => { arg.el.title = arg.event.title; },
       dayCellDidMount: arg => { if (aISO(arg.date) === diaSel) arg.el.classList.add('dia-sel'); },
       dateClick: info => seleccionarDia(info.dateStr),
       eventClick: info => seleccionarDia(info.event.startStr),
@@ -1745,6 +1767,9 @@ function conectarEventos() {
 
   // El tema automático sigue al sistema
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', aplicarTema);
+
+  // Al cruzar el ancho de corte, el mes pasa de puntos a títulos (o al revés)
+  pantallaAncha.addEventListener('change', () => cal?.refetchEvents());
 
   // Si la app está abierta en dos pestañas, se mantienen sincronizadas
   window.addEventListener('storage', e => {

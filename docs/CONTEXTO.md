@@ -40,6 +40,12 @@ anotarla, pasarla por la Bandeja solo agrega un paso. Por lo mismo, **las tareas
 Bandeja con fecha de hoy o vencida aparecen en Hoy**: si no, una tarea anotada con "hoy"
 quedaría invisible hasta el repaso. Y una tarea anotada con hora avisa a esa hora por defecto.
 
+**En la PC la app usa hasta 1200 px de ancho** (2026-09-23, a pedido del dueño: con 760 px se
+desperdiciaba la pantalla). Desde 1100 px, Hoy se arma en dos columnas: las tareas a la
+izquierda y "Tres para hoy" a la derecha, fijo al hacer scroll. Desde 992 px, el mes del
+calendario muestra el título de cada tarea en vez de solo el punto; el corte está en el CSS y
+en `pantallaAncha` del JavaScript, y **tienen que coincidir**. En el celular no cambió nada.
+
 **La barra de estado del iPhone es `default` y no `black-translucent`.** Con la translúcida,
 iOS pinta el reloj en blanco, que sobre el fondo claro no se lee.
 
