@@ -12,24 +12,61 @@ Bootstrap Icons y FullCalendar 6 por CDN. Está publicada en GitHub Pages:
 https://juancruz-coding.github.io/tareas/
 
 Estado al 2026-09-23: funciona completa. Se probó en Chrome de escritorio y con el celular
-emulado; en un iPhone de verdad todavía no.
+emulado; en un iPhone de verdad todavía no. **La migración a Supabase está escrita y probada
+contra un Supabase simulado, pero todavía no contra la base real**: falta la clave publishable
+del proyecto (ver Pendientes). Mientras `SUPABASE_CLAVE` esté vacía, la app funciona como antes,
+solo en el navegador.
 
 ## Decisiones tomadas
 
-**Los datos viven solo en el navegador de cada dispositivo** (2026-09-23). Todo va en
-`localStorage` bajo la clave `tareasApp.v1`, en JSON. No hay servidor ni sincronización: para
-pasar las tareas de la PC al iPhone se exporta un JSON en uno y se importa en el otro, desde
-Ajustes. Se eligió así porque cualquier sincronización suma una cuenta, un backend o las dos
-cosas, y la app tiene que ser simple.
+~~**Los datos viven solo en el navegador de cada dispositivo** (2026-09-23). Todo va en
+`localStorage` bajo la clave `tareasApp.v1`, en JSON. No hay servidor ni sincronización.~~
+Se revirtió el mismo 2026-09-23: el dueño quiso que Claude pudiera cargar tareas y leer sus
+pendientes, y eso pide una base. Ver la decisión siguiente.
 
-**El login es de mentira, y se sabe** (2026-09-23). Usuario y contraseña están escritos en el
-código (`LOGIN_USUARIO` y `LOGIN_CLAVE` en `tareas.html`), y el código es público. Cualquiera
-los lee con "ver código fuente". Se le avisó al dueño antes de hacerlo, junto con dos
-alternativas: un candado local cuya contraseña no fuera al código, o ningún login. Eligió el
-login fijo. Solo frena a quien abre la URL sin saber mirar. Lo que sí protege de verdad es
-que las tareas no están en el servidor: quien abre la URL ve una app vacía con los ejemplos.
-La sesión queda recordada en cada dispositivo hasta tocar "Cerrar sesión" en Ajustes; pedirla
-cada vez sería una fricción diaria que no protege nada.
+**Los datos viven en Supabase** (2026-09-23), proyecto `app-tareas` (ref
+`sximhlooztbbsliqaznw`) en la organización "Juanchi's Org", plan Free. Tablas `tareas` y
+`config`, creadas con `schema.sql`. `localStorage` quedó como caché: lo último cargado, para
+abrir al toque y sin conexión. La interfaz y la lógica no cambiaron; todo lo que habla con la
+base está en el objeto `db` y en la sección "SINCRONIZACIÓN" de `tareas.html`. Detalles que
+importan:
+
+- **`guardar()` manda solo lo que cambió.** No se reescribieron las decenas de llamadas a
+  `guardar()`: ahora comparan cada tarea contra un *espejo* (lo último que se sabe que está en
+  la base, guardado en `tareasApp.espejo`) y suben las diferencias. Así ningún camino —deshacer,
+  el repaso, la recurrencia— puede olvidarse de guardar. La vista se redibuja antes de que
+  Supabase responda; si falla, el cambio queda pendiente y se reintenta.
+- **La app y la base nombran distinto algunas cosas**, y lo traducen `filaDe()` y `tareaDe()`:
+  las listas `bandeja` y `algundia` son `inbox` y `algun_dia` en la base; el "ya avisé" de la
+  app es una clave con fecha, hora y aviso (así vuelve a avisar si se mueve la tarea) y en la
+  base es el booleano `notificada`.
+- **Tiempo real con eco filtrado.** Cada cambio propio vuelve por el canal de tiempo real; se
+  lo reconoce (`db.enviadas` y el espejo) y no se reprocesa. Lo que carga Claude o se edita en
+  otro dispositivo aparece solo.
+- **Migración única por navegador.** Si la base está vacía y nunca se usó (sin
+  `config.inicializado`), el primer navegador que entra sube sus tareas, con los ids viejos
+  cambiados a UUID también dentro de "tres para hoy". Si la base ya tiene datos, mandan esos, y
+  las tareas locales de ese navegador **no se mezclan**: quedan guardadas en
+  `tareasApp.respaldo`, sin pantalla para recuperarlas todavía.
+- **"Borrar todo" no vuelve a sembrar los ejemplos**, porque `inicializado` queda en true.
+
+~~**El login es de mentira, y se sabe** (2026-09-23). Usuario y contraseña fijos en el código
+público, elegido por el dueño con las alternativas a la vista.~~ Se reemplazó el mismo
+2026-09-23: con las tareas en una base, un login de mentira dejaba a cualquiera leer y borrar
+todo, porque el sitio es público y la clave queda en el HTML.
+
+**El login es real: Supabase Auth con mail y contraseña** (2026-09-23). El pedido original
+era abrir la base al rol `anon`, sin login. Se le explicó al dueño que con el sitio público
+eso dejaba sus tareas legibles y borrables por cualquiera, y eligió el login real. Cada fila
+tiene `user_id` y las reglas (RLS) solo dejan entrar a su dueño; sin sesión no se ve nada,
+aunque la clave publishable esté en el HTML. El usuario se crea a mano en el panel, y las altas
+desde afuera tienen que estar apagadas. La sesión queda guardada en cada dispositivo;
+"Cerrar sesión" además borra la copia local.
+
+**Claude entra por SQL, no por la app.** Lo que carga llega sin sesión, así que un trigger
+(`privado.completar_dueno`) completa `user_id` con el primer usuario creado, que es el único.
+`schema.sql` termina con el `insert` y el `select` de ejemplo. Las tareas que carga llevan
+`origen = 'claude'`.
 
 **Las tareas de ejemplo quedaron públicas** (2026-09-23). Se cargan solas la primera vez y
 están escritas en el código, así que se leen desde la URL. Se le ofreció al dueño cambiarlas
@@ -71,6 +108,22 @@ la recurrencia, exportar/importar, el modo oscuro y el login.
 
 ## Pendientes y bloqueos
 
+**Supabase no está conectado todavía** (2026-09-23). Falta la clave publishable del proyecto
+`app-tareas` en `SUPABASE_CLAVE`, y sin ella no se pudo probar contra la base real: las pruebas
+fueron contra un Supabase simulado que aplica los mismos controles que `schema.sql` (migración,
+eco del tiempo real, sin conexión, segundo dispositivo, importar, borrar todo, cerrar sesión).
+Por eso **el cambio está commiteado pero no publicado**: publicarlo sin clave dejaría el sitio
+sin login y solo en el navegador. Cuando esté la clave, falta además:
+
+- correr `schema.sql` en el proyecto;
+- crear el usuario en Authentication → Users y apagar las altas nuevas;
+- que Claude tenga acceso al proyecto: el MCP conectado a la sesión del 2026-09-23 solo veía
+  "JuanCruz-Coding's Org". Se agregó el servidor MCP del proyecto en `.mcp.json`, pero
+  hay que autenticarlo con `claude /mcp` desde una terminal.
+
+**Las tareas locales que no se suben al migrar no tienen pantalla para recuperarse.** Quedan
+en `tareasApp.respaldo` de ese navegador. Si hace falta, se agrega un botón en Ajustes.
+
 Falta probarlo en un iPhone real, sobre todo el swipe para completar y "Agregar a pantalla de
 inicio", que se probaron solo emulados.
 
@@ -104,10 +157,24 @@ misma prueba en Edge headless pasa entera. Para probar la PWA se usó Edge; el s
 el scratchpad de la sesión del 2026-09-23 y no en el repo. El panel de navegador de Claude
 tampoco sirve para esto: no registra service workers.
 
-**Los datos dependen de la dirección.** `localStorage` es por origen
-(`juancruz-coding.github.io`). Si cambia el usuario de GitHub, o la app se abre desde otra
-dirección (el archivo local, otro hosting), arranca vacía. Los datos no se pierden, pero
-quedan en la dirección vieja. Antes de mudarla hay que exportar.
+~~**Los datos dependen de la dirección.** `localStorage` es por origen: si cambia la dirección,
+la app arranca vacía.~~ Con Supabase dejó de ser cierto: la dirección solo cambia la caché, y
+los datos se vuelven a bajar al entrar.
+
+**Si Realtime no avisa, no hay error.** Las tablas tienen que estar en la publicación
+`supabase_realtime`; lo hace el final de `schema.sql`. Sin eso la app funciona igual pero no
+se entera de lo que cambia afuera hasta recargar, y nada lo dice.
+
+**Supabase devuelve como mucho 1000 filas por consulta.** `db.cargarTodo()` pide de a páginas;
+si alguien lo simplifica a un solo `select`, a las 1000 tareas (completadas incluidas) empiezan
+a faltar datos sin ningún aviso.
+
+**Cerrar sesión sin conexión**: el cierre normal de Supabase falla sin red y deja la sesión
+puesta, por eso `cerrarSesion()` cae a `signOut({ scope: 'local' })`.
+
+**El panel de navegador de Claude muestra errores de consola del service worker** ("An unknown
+error occurred when fetching the script"). Son del panel, que no registra service workers; en
+Chrome y Edge de verdad no aparecen.
 
 **La primera carga necesita internet**, porque las librerías vienen de un CDN. Desde la segunda,
 el service worker las tiene guardadas y la app abre sin conexión.

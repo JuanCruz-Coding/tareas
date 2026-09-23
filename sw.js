@@ -9,7 +9,7 @@
    Si se cambia este archivo o la lista PRECARGA, hay que subir el número de CACHE: así el
    navegador instala la versión nueva y borra la vieja. */
 
-const CACHE = 'tareas-v1';
+const CACHE = 'tareas-v2';
 const CDN = 'cdn.jsdelivr.net';
 
 const PRECARGA = [
@@ -25,7 +25,9 @@ const PRECARGA = [
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js',
   'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js',
   'https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/es.global.min.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0/dist/umd/supabase.min.js',
 ];
+// Los pedidos a Supabase (*.supabase.co) no pasan por acá: se dejan ir directo a la red.
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECARGA)).then(() => self.skipWaiting()));

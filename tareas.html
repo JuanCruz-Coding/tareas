@@ -403,6 +403,13 @@ select.control { cursor: pointer; }
 .login-error { color: var(--c-rojo); font-size: 14px; margin-bottom: 12px; }
 .login-boton { min-height: 50px; border-radius: 12px; font-size: 17px; font-weight: 600; }
 
+/* Aviso chico de "sin conexión" */
+.aviso-conexion {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; border-radius: 10px;
+  background: color-mix(in srgb, var(--c-delegadas) 15%, transparent); color: var(--c-delegadas);
+  font-size: 14px; font-weight: 500;
+}
+
 /* Aviso si no cargaron las librerías (sin internet) */
 .sin-libs { background: var(--c-delegadas); color: #fff; padding: 10px 14px; border-radius: 12px; margin-top: 10px; font-size: 14px; }
 </style>
@@ -415,12 +422,12 @@ select.control { cursor: pointer; }
     <div class="login-icono"><i class="bi bi-check2-circle"></i></div>
     <h1>Tareas</h1>
     <div class="grupo">
-      <input class="campo" id="loginUsuario" name="username" autocomplete="username" placeholder="Usuario"
-             autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Usuario">
+      <input class="campo" id="loginUsuario" name="username" type="email" inputmode="email" autocomplete="username"
+             placeholder="Mail" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Mail" required>
       <input class="campo" id="loginClave" name="password" type="password" autocomplete="current-password"
              placeholder="Contraseña" aria-label="Contraseña">
     </div>
-    <div class="login-error" id="loginError" hidden>Usuario o contraseña incorrectos.</div>
+    <div class="login-error" id="loginError" hidden></div>
     <button class="btn btn-primary w-100 login-boton" type="submit">Entrar</button>
   </form>
 </div>
@@ -439,6 +446,7 @@ select.control { cursor: pointer; }
 
   <main>
     <div id="avisoLibs"></div>
+    <div class="aviso-conexion" id="avisoConexion" role="status" hidden><i class="bi bi-wifi-off"></i> Sin conexión, mostrando datos guardados</div>
 
     <!-- HOY: se dibuja entero desde JS -->
     <section class="vista" id="vista-hoy"></section>
@@ -612,7 +620,7 @@ select.control { cursor: pointer; }
           <button type="button" class="fila-boton" id="ajImportar"><i class="bi bi-box-arrow-in-down"></i> Importar un JSON</button>
         </div>
         <input type="file" id="ajArchivo" accept="application/json,.json" hidden>
-        <p class="nota">Todo se guarda solo en este navegador. Para pasar tus tareas a otro dispositivo, exportá acá e importá allá.</p>
+        <p class="nota" id="ajDatosNota"></p>
 
         <div class="grupo">
           <button type="button" class="fila-boton" id="ajSalir"><i class="bi bi-box-arrow-right"></i> Cerrar sesión</button>
@@ -627,6 +635,7 @@ select.control { cursor: pointer; }
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/es.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0/dist/umd/supabase.min.js"></script>
 
 <script>
 'use strict';
@@ -661,8 +670,16 @@ const pad = n => String(n).padStart(2, '0');
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const sinAcentos = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-// No uso crypto.randomUUID porque no existe fuera de contextos seguros
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+// Identificadores UUID v4, que es lo que espera la columna id de Supabase. Se arma con
+// getRandomValues porque crypto.randomUUID no existe fuera de contextos seguros (el archivo local).
+const uid = () => {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+};
+const esUUID = s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s || '');
 
 // Fechas siempre en hora local, como texto YYYY-MM-DD
 const aISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -727,6 +744,7 @@ function nuevaTarea(c = {}) {
     completadaEl: c.completadaEl || null,
     recurrencia: RECURRENCIAS[c.recurrencia] ? c.recurrencia : null,
     notificado: c.notificado || null,   // marca de "ya avisé": fecha+hora+aviso con los que se notificó
+    origen: c.origen || 'app',           // 'claude' si la cargó Claude en Supabase
   };
 }
 
@@ -754,6 +772,7 @@ function datosIniciales() {
   ];
 }
 
+// Con Supabase, localStorage es solo una caché: lo último cargado, para abrir al toque y sin conexión
 function escribir(e) {
   try { localStorage.setItem(CLAVE, JSON.stringify(e)); }
   catch (err) { console.warn('No se pudo guardar', err); }
@@ -765,13 +784,141 @@ function cargar() {
     if (raw) return normalizar(JSON.parse(raw));
   } catch (err) { console.warn('Datos ilegibles, arranco de cero', err); }
   const e = estadoVacio();
-  e.tareas = datosIniciales();
-  escribir(e);
+  // Sin Supabase, la primera vez arranca con los ejemplos, como siempre. Con Supabase los
+  // ejemplos se siembran en la base, y solo si nunca se usó (ver migrarSiHaceFalta).
+  if (!db.configurado) { e.tareas = datosIniciales(); escribir(e); }
   return e;
 }
 
+/* =========================================================
+   SUPABASE
+   Datos del proyecto app-tareas (Settings → API Keys). La clave publishable puede estar
+   acá a la vista: sin iniciar sesión no deja leer ni escribir nada, porque las reglas (RLS)
+   de schema.sql solo le abren las tareas a su dueño. La clave secreta (service_role o
+   secret) NUNCA va en este archivo. Si alguna de las dos queda vacía, la app funciona como
+   antes: todo en este navegador y sin login.
+   ========================================================= */
+const SUPABASE_URL = 'https://sximhlooztbbsliqaznw.supabase.co';
+const SUPABASE_CLAVE = '';
+
+const CLAVE_ESPEJO = 'tareasApp.espejo';     // lo último que se sabe que está en Supabase
+const CLAVE_MIGRADO = 'tareasApp.migrado';   // id del usuario con el que ya se migró este navegador
+const CLAVE_RESPALDO = 'tareasApp.respaldo'; // las tareas locales que no se subieron al migrar
+
+// Las listas se llaman distinto en la base y en la app
+const LISTA_A_DB = { bandeja: 'inbox', mias: 'mias', delegadas: 'delegadas', algundia: 'algun_dia' };
+const LISTA_DE_DB = Object.fromEntries(Object.entries(LISTA_A_DB).map(([app, base]) => [base, app]));
+
+// La app guarda "a qué fecha, hora y aviso ya notifiqué" para volver a avisar si se mueve la
+// tarea; la base guarda un sí/no. Se traduce comparando contra la clave actual de la tarea.
+const claveAviso = t => (t.fecha && t.hora && t.recordatorio != null) ? `${t.fecha}T${t.hora}|${t.recordatorio}` : null;
+const fechaHoraISO = v => (v ? new Date(v).toISOString() : null);
+
+// Tarea de la app → fila de la tabla
+function filaDe(t) {
+  const aviso = claveAviso(t);
+  return {
+    id: t.id,
+    titulo: t.titulo,
+    notas: t.notas || null,
+    lista: LISTA_A_DB[t.lista],
+    fecha: t.fecha,
+    hora: t.hora,
+    recordatorio: t.recordatorio,
+    prioridad: t.prioridad,
+    delegado_a: t.delegadoA,
+    completada: t.completada,
+    completada_el: fechaHoraISO(t.completadaEl),
+    recurrencia: t.recurrencia,
+    notificada: !!aviso && t.notificado === aviso,
+    origen: t.origen,
+    creada: fechaHoraISO(t.creada),
+  };
+}
+
+// Fila de la tabla → tarea de la app
+function tareaDe(f) {
+  const t = nuevaTarea({
+    id: f.id,
+    titulo: f.titulo,
+    notas: f.notas,
+    lista: LISTA_DE_DB[f.lista],
+    fecha: f.fecha,
+    hora: f.hora ? f.hora.slice(0, 5) : null,   // la base devuelve "09:00:00"
+    recordatorio: f.recordatorio,
+    prioridad: f.prioridad,
+    delegadoA: f.delegado_a,
+    completada: f.completada,
+    creada: fechaHoraISO(f.creada),
+    completadaEl: fechaHoraISO(f.completada_el),
+    recurrencia: f.recurrencia,
+    origen: f.origen,
+  });
+  if (f.notificada) t.notificado = claveAviso(t);
+  return t;
+}
+
+// Capa de datos: lo único del código que habla con Supabase
+const db = {
+  configurado: !!(SUPABASE_URL && SUPABASE_CLAVE),
+  sb: null,             // cliente de supabase-js
+  usuario: null,        // id del usuario logueado
+  activo: false,        // true con sesión: los cambios se mandan a Supabase
+  listo: false,         // true cuando este navegador ya migró: antes, el espejo no sirve para comparar
+  sinConexion: false,
+  canal: null,          // suscripción de tiempo real
+  espejo: { tareas: {}, config: {} },   // fila por fila, lo último que se sabe que está en la base
+  enviadas: new Set(),  // cambios propios en viaje, para reconocer su eco en el tiempo real
+
+  async cargarTodo() {
+    const filas = [];
+    // Supabase devuelve hasta 1000 filas por pedido: se pide de a páginas
+    for (let desde = 0; ; desde += 1000) {
+      const { data, error } = await this.sb.from('tareas').select('*').order('creada').range(desde, desde + 999);
+      if (error) throw error;
+      filas.push(...data);
+      if (data.length < 1000) break;
+    }
+    const { data: conf, error: errConf } = await this.sb.from('config').select('clave, valor');
+    if (errConf) throw errConf;
+    return { tareas: filas.map(tareaDe), config: Object.fromEntries(conf.map(c => [c.clave, c.valor])) };
+  },
+
+  async guardarTarea(t) { return this.guardarTareas([t]); },
+
+  async guardarTareas(lista) {
+    for (let i = 0; i < lista.length; i += 500) {
+      const filas = lista.slice(i, i + 500).map(t => ({ ...filaDe(t), user_id: this.usuario }));
+      const { error } = await this.sb.from('tareas').upsert(filas, { onConflict: 'id' });
+      if (error) throw error;
+    }
+  },
+
+  async borrarTarea(id) { return this.borrarTareas([id]); },
+
+  async borrarTareas(ids) {
+    for (let i = 0; i < ids.length; i += 200) {
+      const { error } = await this.sb.from('tareas').delete().in('id', ids.slice(i, i + 200));
+      if (error) throw error;
+    }
+  },
+
+  async borrarTodas() {
+    const { error } = await this.sb.from('tareas').delete().eq('user_id', this.usuario);
+    if (error) throw error;
+  },
+
+  async guardarConfig(clave, valor) {
+    const { error } = await this.sb.from('config')
+      .upsert({ user_id: this.usuario, clave, valor: valor ?? null }, { onConflict: 'user_id,clave' });
+    if (error) throw error;
+  },
+};
+
 let estado = cargar();
-const guardar = () => escribir(estado);
+// Cada cambio se guarda en la caché y se manda a Supabase sin esperar la respuesta: la vista
+// ya se redibujó con el cambio (actualización optimista).
+const guardar = () => { escribir(estado); programarSincronizacion(); };
 const buscar = id => estado.tareas.find(t => t.id === id);
 const pendientes = () => estado.tareas.filter(t => !t.completada);
 
@@ -1533,6 +1680,12 @@ function renderAjustes() {
   $('#ajPermiso').hidden = !hayNotificaciones() || Notification.permission === 'granted';
   const pend = pendientes().length;
   $('#ajResumen').textContent = `${estado.tareas.length} tareas guardadas, ${pend} pendientes.`;
+  $('#ajSalir').hidden = !db.activo;
+  $('#ajDatosNota').textContent = !db.activo
+    ? 'Todo se guarda solo en este navegador. Para pasar tus tareas a otro dispositivo, exportá acá e importá allá.'
+    : db.sinConexion
+      ? 'Sin conexión: los cambios quedan en este dispositivo y se suben a Supabase cuando vuelva.'
+      : 'Tus tareas están en Supabase y se sincronizan solas entre tus dispositivos. Exportar te deja una copia de respaldo.';
 }
 
 function exportar() {
@@ -1546,74 +1699,351 @@ function exportar() {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-function importar(archivo) {
-  const lector = new FileReader();
-  lector.onload = () => {
-    try {
-      const nuevo = normalizar(JSON.parse(lector.result));
-      if (!confirm(`Esto reemplaza tus ${estado.tareas.length} tareas por las ${nuevo.tareas.length} del archivo. ¿Seguimos?`)) return;
-      nuevo.ajustes.vista = vista;
-      estado = nuevo;
-      guardar(); aplicarTema(); renderAjustes(); render();
-      aviso('Datos importados');
-    } catch (err) {
-      aviso('No pude leer ese archivo: ' + err.message);
-    }
+// Reemplaza todo lo que hay en Supabase por el estado dado. Si falla a mitad de camino, el
+// espejo queda vacío y la próxima sincronización vuelve a subir lo que haya en pantalla.
+async function reemplazarEnSupabase(nuevo) {
+  await db.borrarTodas();
+  db.espejo.tareas = {};
+  await db.guardarTareas(nuevo.tareas);
+  await db.guardarConfig('tres_para_hoy', nuevo.tresPorFecha);
+  await db.guardarConfig('ultimo_repaso', nuevo.ultimoRepaso ?? null);
+  db.espejo = {
+    tareas: Object.fromEntries(nuevo.tareas.map(t => [t.id, JSON.stringify(filaDe(t))])),
+    config: { tres_para_hoy: JSON.stringify(nuevo.tresPorFecha), ultimo_repaso: JSON.stringify(nuevo.ultimoRepaso ?? null) },
   };
-  lector.readAsText(archivo);
+  guardarEspejo();
 }
 
-function borrarTodo() {
+async function importar(archivo) {
+  let nuevo;
+  try {
+    nuevo = remapearIds(normalizar(JSON.parse(await archivo.text())));
+  } catch (err) {
+    aviso('No pude leer ese archivo: ' + err.message);
+    return;
+  }
+  if (!confirm(`Esto reemplaza tus ${estado.tareas.length} tareas por las ${nuevo.tareas.length} del archivo. ¿Seguimos?`)) return;
+  nuevo.ajustes.vista = vista;
+  if (db.activo) {
+    try { await reemplazarEnSupabase(nuevo); }
+    catch (err) { aviso('No se pudo importar: hace falta conexión con Supabase.'); return; }
+  }
+  estado = nuevo;
+  guardar(); aplicarTema(); renderAjustes(); render();
+  aviso('Datos importados');
+}
+
+async function borrarTodo() {
   if (!confirm('¿Borrar TODAS las tareas? No se puede deshacer.')) return;
   if (!confirm('¿Seguro? Si querés, exportá antes una copia.')) return;
-  const tema = estado.ajustes.tema;
-  estado = estadoVacio();
-  estado.ajustes.tema = tema;
-  estado.ajustes.permisoPedido = true;
+  const nuevo = estadoVacio();
+  nuevo.ajustes = { ...estado.ajustes, permisoPedido: true };
+  if (db.activo) {
+    try { await reemplazarEnSupabase(nuevo); }
+    catch (err) { aviso('No se pudo borrar: hace falta conexión con Supabase.'); return; }
+  }
+  estado = nuevo;
   guardar(); renderAjustes(); render();
   aviso('Listo, arrancás de cero');
 }
 
 /* =========================================================
-   LOGIN
-   Ojo: esto NO es seguridad. El usuario y la contraseña están escritos acá, y el código
-   es público en GitHub Pages: cualquiera los ve con "ver código fuente". Solo frena a quien
-   abre la URL sin saber mirar. Las tareas nunca están en el servidor: viven en el navegador
-   de cada dispositivo. Quedó así por decisión del dueño el 2026-09-23 (ver docs/CONTEXTO.md).
+   SINCRONIZACIÓN CON SUPABASE
+   guardar() no sabe qué cambió: compara cada tarea contra el espejo (lo último que se sabe
+   que está en la base) y manda solo las diferencias. Así cualquier camino que modifique el
+   estado —deshacer, el repaso, la recurrencia— queda guardado sin tener que acordarse.
    ========================================================= */
-const LOGIN_USUARIO = 'admin';
-const LOGIN_CLAVE = '1234';
-const CLAVE_SESION = 'tareasApp.sesion';   // la sesión queda recordada en el dispositivo
+let temporizadorSync = null;
+let sincronizando = null;
+let otraVuelta = false;
 
-function sesionAbierta() {
-  try { return localStorage.getItem(CLAVE_SESION) === '1'; } catch (err) { return false; }
+function programarSincronizacion() {
+  if (!db.activo || !db.listo) return;
+  clearTimeout(temporizadorSync);
+  temporizadorSync = setTimeout(sincronizar, 400);   // junta los cambios seguidos en un solo envío
 }
 
-function mostrarLogin() {
+function guardarEspejo() {
+  try { localStorage.setItem(CLAVE_ESPEJO, JSON.stringify({ usuario: db.usuario, ...db.espejo })); }
+  catch (err) { console.warn('No se pudo guardar el espejo', err); }
+}
+
+function cargarEspejo() {
+  try {
+    const e = JSON.parse(localStorage.getItem(CLAVE_ESPEJO) || 'null');
+    if (e && e.usuario === db.usuario) db.espejo = { tareas: e.tareas || {}, config: e.config || {} };
+  } catch (err) { /* sin espejo: se arma al cargar de Supabase */ }
+}
+
+const esErrorDeRed = err => !navigator.onLine || /fetch|network|load failed|conexi/i.test(String(err?.message || err));
+
+function marcarConexion(ok) {
+  db.sinConexion = !ok;
+  $('#avisoConexion').hidden = ok;
+}
+
+// Devuelve true si todo quedó guardado en Supabase
+async function sincronizar() {
+  // Antes de migrar no se sincroniza: el espejo está vacío y se subiría todo con los ids viejos
+  if (!db.activo || !db.listo) return true;
+  if (sincronizando) { otraVuelta = true; return sincronizando; }
+  sincronizando = (async () => {
+    const e = db.espejo;
+    const presentes = new Set();
+    const cambiadas = [];
+    for (const t of estado.tareas) {
+      presentes.add(t.id);
+      const s = JSON.stringify(filaDe(t));
+      if (e.tareas[t.id] !== s) cambiadas.push({ t, s });
+    }
+    const borradas = Object.keys(e.tareas).filter(id => !presentes.has(id));
+    const config = [['tres_para_hoy', estado.tresPorFecha], ['ultimo_repaso', estado.ultimoRepaso ?? null]]
+      .map(([clave, valor]) => ({ clave, valor, s: JSON.stringify(valor) }))
+      .filter(c => e.config[c.clave] !== c.s);
+    if (!cambiadas.length && !borradas.length && !config.length) return true;
+
+    // Se anota en el espejo antes de mandar; si falla, se deshace y se reintenta más tarde
+    const previo = { tareas: {}, config: {} };
+    for (const { t, s } of cambiadas) { previo.tareas[t.id] = e.tareas[t.id]; e.tareas[t.id] = s; db.enviadas.add(`${t.id}|${s}`); }
+    for (const id of borradas) { previo.tareas[id] = e.tareas[id]; delete e.tareas[id]; }
+    for (const c of config) { previo.config[c.clave] = e.config[c.clave]; e.config[c.clave] = c.s; }
+    try {
+      if (cambiadas.length) await db.guardarTareas(cambiadas.map(c => c.t));
+      if (borradas.length) await db.borrarTareas(borradas);
+      for (const c of config) await db.guardarConfig(c.clave, c.valor);
+      guardarEspejo();
+      marcarConexion(true);
+      return true;
+    } catch (err) {
+      for (const [id, s] of Object.entries(previo.tareas)) { if (s === undefined) delete e.tareas[id]; else e.tareas[id] = s; }
+      for (const [k, s] of Object.entries(previo.config)) { if (s === undefined) delete e.config[k]; else e.config[k] = s; }
+      for (const { t, s } of cambiadas) db.enviadas.delete(`${t.id}|${s}`);
+      guardarEspejo();
+      if (esErrorDeRed(err)) marcarConexion(false);
+      else { console.error('Supabase rechazó el cambio', err); aviso('No se pudo guardar en Supabase: ' + (err.message || err)); }
+      return false;
+    }
+  })();
+  try { return await sincronizando; }
+  finally {
+    sincronizando = null;
+    if (otraVuelta) { otraVuelta = false; programarSincronizacion(); }
+  }
+}
+
+// Reemplaza el estado con lo que hay en Supabase
+function aplicarRemoto({ tareas, config }) {
+  db.enviadas.clear();
+  estado.tareas = tareas;
+  estado.tresPorFecha = config.tres_para_hoy && typeof config.tres_para_hoy === 'object' ? config.tres_para_hoy : {};
+  estado.ultimoRepaso = config.ultimo_repaso || null;
+  db.espejo = {
+    tareas: Object.fromEntries(tareas.map(t => [t.id, JSON.stringify(filaDe(t))])),
+    config: { tres_para_hoy: JSON.stringify(estado.tresPorFecha), ultimo_repaso: JSON.stringify(estado.ultimoRepaso) },
+  };
+  escribir(estado);
+  guardarEspejo();
+  render();
+}
+
+// Cambia a UUID los ids viejos (los de antes de Supabase), también dentro de "tres para hoy"
+function remapearIds(e) {
+  const nuevos = {};
+  e.tareas = e.tareas.map(t => {
+    if (esUUID(t.id)) return t;
+    nuevos[t.id] = uid();
+    return { ...t, id: nuevos[t.id] };
+  });
+  for (const f of Object.keys(e.tresPorFecha || {})) {
+    e.tresPorFecha[f] = (e.tresPorFecha[f] || []).map(id => nuevos[id] || id);
+  }
+  return e;
+}
+
+// Migración única por navegador. Si la base está vacía y nunca se usó, se suben las tareas de
+// este navegador (o los ejemplos, si no hay ninguna). Si la base ya tiene datos, mandan esos:
+// las locales se guardan aparte en CLAVE_RESPALDO por las dudas, pero no se mezclan.
+async function migrarSiHaceFalta(remoto) {
+  if (!remoto.tareas.length && !remoto.config.inicializado) {
+    const local = remapearIds({
+      tareas: estado.tareas.length ? estado.tareas : datosIniciales(),
+      tresPorFecha: structuredClone(estado.tresPorFecha || {}),
+    });
+    await db.guardarTareas(local.tareas);
+    await db.guardarConfig('tres_para_hoy', local.tresPorFecha);
+    await db.guardarConfig('ultimo_repaso', estado.ultimoRepaso ?? null);
+    await db.guardarConfig('inicializado', true);
+    remoto = { tareas: local.tareas, config: { tres_para_hoy: local.tresPorFecha, ultimo_repaso: estado.ultimoRepaso, inicializado: true } };
+    if (estado.tareas.length) aviso(`Subí tus ${estado.tareas.length} tareas a Supabase`);
+  } else {
+    if (estado.tareas.length) {
+      try { localStorage.setItem(CLAVE_RESPALDO, JSON.stringify(estado)); } catch (err) { /* sin lugar: no hay respaldo */ }
+    }
+    if (!remoto.config.inicializado) await db.guardarConfig('inicializado', true);
+  }
+  localStorage.setItem(CLAVE_MIGRADO, db.usuario);
+  db.listo = true;
+  return remoto;
+}
+
+// Al entrar: primero se sube lo que quedó pendiente, después se trae todo y se escucha
+async function conectarSupabase() {
+  try {
+    let remoto;
+    if (localStorage.getItem(CLAVE_MIGRADO) !== db.usuario) {
+      remoto = await migrarSiHaceFalta(await db.cargarTodo());
+    } else {
+      if (!(await sincronizar())) throw new Error('No se pudo subir lo pendiente');
+      remoto = await db.cargarTodo();
+    }
+    aplicarRemoto(remoto);
+    marcarConexion(true);
+    suscribir();
+  } catch (err) {
+    console.warn('Supabase no responde; se muestran los datos guardados', err);
+    marcarConexion(false);
+  }
+}
+
+// Al volver la conexión (o la app al frente): se sube lo pendiente y se recarga
+let recargando = false;
+async function recargar() {
+  if (!db.activo || recargando) return;
+  recargando = true;
+  try {
+    if (localStorage.getItem(CLAVE_MIGRADO) !== db.usuario) { await conectarSupabase(); return; }
+    if (!(await sincronizar())) return;
+    aplicarRemoto(await db.cargarTodo());
+    marcarConexion(true);
+    suscribir();
+  } catch (err) {
+    marcarConexion(false);
+  } finally {
+    recargando = false;
+  }
+}
+
+// Tiempo real: lo que cambia en otro dispositivo, o lo que carga Claude, aparece solo
+function suscribir() {
+  if (db.canal) return;
+  db.canal = db.sb.channel('tareas-cambios')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, recibirTarea)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'config' }, recibirConfig)
+    .subscribe(situacion => {
+      // Si el canal se cayó y volvió, pudo perderse algo: se recarga entero
+      if (situacion === 'SUBSCRIBED' && db.sinConexion) recargar();
+    });
+}
+
+function recibirTarea(p) {
+  if (p.eventType === 'DELETE') {
+    const id = p.old?.id;
+    if (!id || (!(id in db.espejo.tareas) && !buscar(id))) return;
+    delete db.espejo.tareas[id];
+    estado.tareas = estado.tareas.filter(t => t.id !== id);
+  } else {
+    const t = tareaDe(p.new);
+    const s = JSON.stringify(filaDe(t));
+    if (db.enviadas.delete(`${t.id}|${s}`)) return;   // es el eco de un cambio propio
+    if (db.espejo.tareas[t.id] === s) return;          // ya estaba así
+    db.espejo.tareas[t.id] = s;
+    const i = estado.tareas.findIndex(x => x.id === t.id);
+    if (i >= 0) estado.tareas[i] = t;
+    else estado.tareas.push(t);
+  }
+  escribir(estado);
+  guardarEspejo();
+  render();
+}
+
+function recibirConfig(p) {
+  if (p.eventType === 'DELETE' || !p.new?.clave) return;
+  const { clave, valor } = p.new;
+  const s = JSON.stringify(valor ?? null);
+  if (db.espejo.config[clave] === s) return;
+  if (clave === 'tres_para_hoy') { estado.tresPorFecha = valor && typeof valor === 'object' ? valor : {}; db.espejo.config[clave] = JSON.stringify(estado.tresPorFecha); }
+  else if (clave === 'ultimo_repaso') { estado.ultimoRepaso = valor || null; db.espejo.config[clave] = s; }
+  else return;
+  escribir(estado);
+  guardarEspejo();
+  render();
+}
+
+/* =========================================================
+   LOGIN con Supabase Auth
+   El usuario se crea a mano en el panel de Supabase (Authentication → Users) y las altas
+   desde afuera van apagadas. La sesión queda guardada en el dispositivo; supabase-js la
+   renueva sola.
+   ========================================================= */
+let saliendo = false;
+
+function mostrarLogin(mensaje = '') {
   $('.app').hidden = true;
   $('#login').hidden = false;
+  $('#loginError').textContent = mensaje;
+  $('#loginError').hidden = !mensaje;
   $('#loginUsuario').focus();
 }
 
-function intentarLogin(e) {
-  e.preventDefault();
-  const usuario = $('#loginUsuario').value.trim().toLowerCase();
-  const clave = $('#loginClave').value;
-  if (usuario !== LOGIN_USUARIO || clave !== LOGIN_CLAVE) {
-    $('#loginError').hidden = false;
-    $('#loginClave').value = '';
-    $('#loginClave').focus();
-    return;
-  }
-  try { localStorage.setItem(CLAVE_SESION, '1'); } catch (err) { /* sin storage, dura hasta recargar */ }
-  $('#login').hidden = true;
-  $('.app').hidden = false;
-  $('#loginClave').blur();
-  iniciar();
+// Usuario de la última sesión guardada, para poder abrir sin conexión aunque el token haya vencido
+function usuarioGuardado() {
+  try {
+    const ref = new URL(SUPABASE_URL).hostname.split('.')[0];
+    return JSON.parse(localStorage.getItem(`sb-${ref}-auth-token`))?.user?.id || null;
+  } catch (err) { return null; }
 }
 
-function cerrarSesion() {
-  try { localStorage.removeItem(CLAVE_SESION); } catch (err) { /* nada */ }
+function entrar(usuario) {
+  db.usuario = usuario;
+  db.activo = true;
+  db.listo = localStorage.getItem(CLAVE_MIGRADO) === usuario;
+  cargarEspejo();
+  $('#login').hidden = true;
+  $('.app').hidden = false;
+  iniciar();            // dibuja lo guardado en este dispositivo, al toque
+  conectarSupabase();   // y después trae lo de Supabase
+}
+
+async function intentarLogin(e) {
+  e.preventDefault();
+  const boton = $('#loginForm button[type="submit"]');
+  boton.disabled = true;
+  try {
+    const { data, error } = await db.sb.auth.signInWithPassword({
+      email: $('#loginUsuario').value.trim(),
+      password: $('#loginClave').value,
+    });
+    if (error) {
+      const msg = esErrorDeRed(error) ? 'Sin conexión: para entrar necesitás internet.'
+                : error.status === 400 ? 'Mail o contraseña incorrectos.'
+                : 'No se pudo entrar: ' + error.message;
+      mostrarLogin(msg);
+      $('#loginClave').value = '';
+      $('#loginClave').focus();
+      return;
+    }
+    $('#loginClave').value = '';
+    $('#loginClave').blur();
+    entrar(data.user.id);
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+async function cerrarSesion() {
+  if (db.activo) {
+    saliendo = true;
+    await sincronizar();   // que no se pierda lo último
+    // Sin conexión el cierre "global" falla y deja la sesión puesta: ahí se cierra solo acá
+    let salida = { error: 'sin intentar' };
+    try { salida = await db.sb.auth.signOut(); } catch (err) { /* se cae al cierre local */ }
+    if (salida?.error) { try { await db.sb.auth.signOut({ scope: 'local' }); } catch (err) { /* nada más que hacer */ } }
+    // La copia local se borra: en un dispositivo prestado nadie tiene que ver tus tareas
+    const vacio = estadoVacio();
+    vacio.ajustes = estado.ajustes;
+    escribir(vacio);
+    localStorage.removeItem(CLAVE_ESPEJO);
+  }
   location.reload();
 }
 
@@ -1783,11 +2213,20 @@ function conectarEventos() {
   // Al cruzar el ancho de corte, el mes pasa de puntos a títulos (o al revés)
   pantallaAncha.addEventListener('change', () => cal?.refetchEvents());
 
-  // Si la app está abierta en dos pestañas, se mantienen sincronizadas
-  window.addEventListener('storage', e => {
-    if (e.key !== CLAVE) return;
-    try { estado = cargar(); render(); } catch (err) { console.warn(err); }
-  });
+  if (db.activo) {
+    // Con Supabase: al volver la conexión o la app al frente se recarga; al irse, se sube lo pendiente
+    window.addEventListener('online', recargar);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') recargar();
+      else sincronizar();
+    });
+  } else {
+    // Sin Supabase: si la app está abierta en dos pestañas, se mantienen sincronizadas
+    window.addEventListener('storage', e => {
+      if (e.key !== CLAVE) return;
+      try { estado = cargar(); render(); } catch (err) { console.warn(err); }
+    });
+  }
 }
 
 /* =========================================================
@@ -1829,6 +2268,7 @@ function iniciar() {
   setInterval(() => {
     revisarRecordatorios();
     if (hoyISO() !== ultimoDia) { ultimoDia = hoyISO(); diaSel = ultimoDia; render(); }
+    if (db.activo && db.sinConexion) recargar();   // reintento mientras no haya conexión
   }, 30000);
 
   // Primera vez: pedir permiso de notificaciones. Se intenta al abrir, y si el navegador
@@ -1849,11 +2289,35 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(err => console.warn('Sin service worker', err));
 }
 
-// El tema se aplica antes que nada, así el login también sale en claro u oscuro
-aplicarTema();
-$('#loginForm').addEventListener('submit', intentarLogin);
-if (sesionAbierta()) iniciar();
-else mostrarLogin();
+async function arrancar() {
+  // El tema se aplica antes que nada, así el login también sale en claro u oscuro
+  aplicarTema();
+  $('#loginForm').addEventListener('submit', intentarLogin);
+
+  // Sin Supabase configurado: todo en este navegador, sin login, como antes
+  if (!db.configurado) { iniciar(); return; }
+
+  // La librería no cargó (sin internet y sin copia guardada): se muestra lo guardado si hubo sesión
+  if (!window.supabase) {
+    const guardado = usuarioGuardado();
+    if (guardado) { entrar(guardado); marcarConexion(false); }
+    else mostrarLogin('Sin conexión: para entrar la primera vez necesitás internet.');
+    return;
+  }
+
+  db.sb = supabase.createClient(SUPABASE_URL, SUPABASE_CLAVE);
+  // Si la sesión se cierra desde otro lado (o vence sin poder renovarse), se vuelve al login
+  db.sb.auth.onAuthStateChange(evento => {
+    if (evento === 'SIGNED_OUT' && db.activo && !saliendo) location.reload();
+  });
+
+  const { data, error } = await db.sb.auth.getSession();
+  if (data?.session) entrar(data.session.user.id);
+  else if (error && usuarioGuardado()) { entrar(usuarioGuardado()); marcarConexion(false); }   // token vencido y sin red
+  else mostrarLogin();
+}
+
+arrancar();
 </script>
 </body>
 </html>
