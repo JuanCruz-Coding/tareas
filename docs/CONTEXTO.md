@@ -140,7 +140,11 @@ porque no habría usuario al que asignarle la tarea.
 
 ~~El servidor del proyecto que se agregó en `.mcp.json` sobra por ahora.~~ Se corrigió el mismo
 día: **es el que permite escribir**, porque su URL no lleva `read_only`. Hay que autenticarlo
-una vez con `claude /mcp` desde una terminal, en la carpeta del proyecto.
+una vez con `claude /mcp` desde una terminal, en la carpeta del proyecto. **El dueño lo
+autenticó el 2026-09-23** y `claude mcp list` lo da como conectado. Pero una sesión de Claude
+Code carga los MCP al arrancar: solo lo ve una sesión **abierta en esta carpeta después** de
+autenticarlo. La prueba de escritura y del tiempo real con una tarea de Claude quedó para esa
+sesión.
 
 **Las tareas locales que no se suben al migrar no tienen pantalla para recuperarse.** Quedan
 en `tareasApp.respaldo` de ese navegador. Si hace falta, se agrega un botón en Ajustes.
