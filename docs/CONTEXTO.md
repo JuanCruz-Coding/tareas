@@ -11,11 +11,10 @@ Es un solo archivo, `tareas.html`, con HTML, CSS y JavaScript sin build. Usa Boo
 Bootstrap Icons y FullCalendar 6 por CDN. Está publicada en GitHub Pages:
 https://juancruz-coding.github.io/tareas/
 
-Estado al 2026-09-23: funciona completa. Se probó en Chrome de escritorio y con el celular
-emulado; en un iPhone de verdad todavía no. **La migración a Supabase está escrita y probada
-contra un Supabase simulado, pero todavía no contra la base real**: falta la clave publishable
-del proyecto (ver Pendientes). Mientras `SUPABASE_CLAVE` esté vacía, la app funciona como antes,
-solo en el navegador.
+Estado al 2026-09-23: funciona completa y **ya corre sobre Supabase**, publicada. Se probó en
+Chrome de escritorio y con el celular emulado; en un iPhone de verdad todavía no. Si alguna vez
+`SUPABASE_CLAVE` queda vacía, la app vuelve a funcionar como antes, solo en el navegador y sin
+login.
 
 ## Decisiones tomadas
 
@@ -108,16 +107,12 @@ la recurrencia, exportar/importar, el modo oscuro y el login.
 
 ## Pendientes y bloqueos
 
-**Supabase está listo pero falta el usuario** (2026-09-23). `schema.sql` se aplicó por el MCP
-como migración `esquema_inicial`, y se verificó: RLS prendido en las dos tablas, `anon` sin
-ningún permiso (la API responde 401 a leer y a escribir sin sesión), las cuatro triggers, las
-dos tablas en Realtime, y cero avisos de seguridad del propio Supabase. La clave publishable ya
-está en `SUPABASE_CLAVE`, y contra la base real la app carga y el login rechaza credenciales
-inválidas.
-
-Lo que **no** se pudo probar contra la base real es el camino con sesión (migración, tiempo
-real, sincronización), porque el usuario de Auth no existe y lo tiene que crear el dueño: está
-probado contra un Supabase simulado que aplica los mismos controles que `schema.sql`. Falta:
+**La migración a Supabase quedó hecha** (2026-09-23). `schema.sql` se aplicó por el MCP como
+migración `esquema_inicial`, y se verificó: RLS prendido en las dos tablas, `anon` sin ningún
+permiso (la API responde 401 a leer y a escribir sin sesión), los cuatro triggers, las dos
+tablas en Realtime, y cero avisos de seguridad del propio Supabase. Antes de conectarla, la capa
+de datos se probó contra un Supabase simulado que aplica los mismos controles que `schema.sql`.
+Lo que se fue cerrando contra la base real:
 
 - ~~crear el usuario en Authentication → Users y apagar las altas nuevas~~: hecho por el dueño
   el 2026-09-23; verificado (un usuario confirmado, `disable_signup` en true en
@@ -127,8 +122,18 @@ probado contra un Supabase simulado que aplica los mismos controles que `schema.
 - ~~después del primer login, verificar desde la base que se subieron las tareas~~: verificado
   el 2026-09-23, llegaron las 8, todas a nombre del usuario, con horas, recurrencias y
   delegados intactos, y las tres claves de `config`;
-- **que Claude pueda escribir**: ver el párrafo siguiente. Hasta entonces, el tiempo real con
-  una tarea cargada por Claude no se probó contra la base real (sí contra el simulado).
+- ~~**que Claude pueda escribir**~~: verificado el 2026-09-23 desde una sesión de Claude Code
+  abierta en esta carpeta, con el servidor MCP del proyecto (ver el párrafo siguiente): un
+  `insert` en `tareas` sin `user_id`, con `lista = 'mias'`, fecha de hoy y `origen = 'claude'`,
+  entró y el trigger le puso el `user_id` del dueño. Quedó como tarea de prueba, con el título
+  "Tarea de prueba cargada por Claude"; se puede borrar desde la app.
+  **Corrección, mirando la base el mismo día:** esa tarea ya no está; no hay ninguna con
+  "prueba" en el título. Lo más probable es que el dueño la haya borrado desde la app después de
+  verla, pero la base no guarda lo borrado y no se puede confirmar. Sí están, con
+  `origen = 'claude'` y a nombre del dueño, otras dos cargadas juntas a las 15:57 UTC: "Evaluar
+  si sigo con la app propia" y "Idea: pasar la app a PWA con notificaciones push". O sea que
+  la escritura de Claude anda. Queda por confirmar con el dueño si la tarea de prueba apareció
+  **sola** en la app abierta, que es la prueba del tiempo real contra la base real.
 
 **El conector de Supabase que Claude tiene en claude.ai es de solo lectura para el SQL.** Llega
 a `app-tareas` (aunque `list_organizations` no mostraba "Juanchi's Org", `get_project` con el ref
@@ -143,8 +148,10 @@ día: **es el que permite escribir**, porque su URL no lleva `read_only`. Hay qu
 una vez con `claude /mcp` desde una terminal, en la carpeta del proyecto. **El dueño lo
 autenticó el 2026-09-23** y `claude mcp list` lo da como conectado. Pero una sesión de Claude
 Code carga los MCP al arrancar: solo lo ve una sesión **abierta en esta carpeta después** de
-autenticarlo. La prueba de escritura y del tiempo real con una tarea de Claude quedó para esa
-sesión.
+autenticarlo. **La escritura quedó probada el mismo 2026-09-23** desde una sesión así (ver el
+punto tachado de arriba). Ojo al elegir la herramienta: en una sesión de Claude Code conviven
+los dos servidores, el del proyecto (`mcp__supabase__...`, escribe) y el de claude.ai
+(`mcp__claude_ai_Supabase__...`, solo lee); para cargar tareas hay que usar el del proyecto.
 
 **Las tareas locales que no se suben al migrar no tienen pantalla para recuperarse.** Quedan
 en `tareasApp.respaldo` de ese navegador. Si hace falta, se agrega un botón en Ajustes.
