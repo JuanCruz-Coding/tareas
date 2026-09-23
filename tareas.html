@@ -13,7 +13,8 @@
 <meta name="format-detection" content="telephone=no">
 <title>Tareas</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="icon" type="image/png" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icono-192.png">
+<link rel="manifest" href="manifest.webmanifest">
 
 <!-- Librerías: Bootstrap (estilos, modales), Bootstrap Icons y FullCalendar para el calendario -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
@@ -602,8 +603,8 @@ select.control { cursor: pointer; }
           <div class="campo-fila"><span>Estado</span><span class="text-secundario text-end" id="ajNotif"></span></div>
           <button type="button" class="fila-boton" id="ajPermiso"><i class="bi bi-bell"></i> Pedir permiso de notificaciones</button>
         </div>
-        <p class="nota">Las notificaciones solo funcionan con la app abierta en una pestaña. Si la cerrás, no te llegan.
-          En iPhone el navegador no deja que una página suelta mande notificaciones: vas a ver el aviso adentro de la app.</p>
+        <p class="nota">Las notificaciones solo funcionan con la app abierta. Si la cerrás, no te llegan.
+          En iPhone, además, tenés que agregarla a la pantalla de inicio y abrirla desde ahí: en Safari no hay notificaciones.</p>
 
         <div class="etiqueta-campo">Datos</div>
         <div class="grupo">
@@ -1463,15 +1464,26 @@ async function pedirPermiso(silencioso = false) {
   } catch (err) { console.warn(err); }
 }
 
+// La notificación se muestra por el service worker cuando lo hay: en Android y en el iPhone
+// (app agregada a la pantalla de inicio) es la única forma, porque `new Notification()` no existe.
+async function mostrarNotificacion(t, cuerpo) {
+  const opciones = { body: cuerpo, tag: t.id, icon: 'icono-192.png', data: { id: t.id } };
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) { await reg.showNotification(t.titulo, opciones); return; }
+  } catch (err) { /* sin service worker (p. ej. el archivo abierto en local): se prueba lo otro */ }
+  try {
+    const n = new Notification(t.titulo, opciones);
+    n.onclick = () => { window.focus(); abrirEditar(t.id); n.close(); };
+  } catch (err) { console.warn('No se pudo mostrar la notificación', err); }
+}
+
 function avisarTarea(t) {
   const cuando = t.recordatorio ? `${AVISOS[t.recordatorio]} · ${formatHora(t.hora)}` : `Ahora · ${formatHora(t.hora)}`;
   if (hayNotificaciones() && Notification.permission === 'granted') {
-    try {
-      const n = new Notification(t.titulo, { body: cuando + (t.delegadoA ? ` · ${t.delegadoA}` : ''), tag: t.id });
-      n.onclick = () => { window.focus(); abrirEditar(t.id); n.close(); };
-    } catch (err) { console.warn('No se pudo mostrar la notificación', err); }
+    mostrarNotificacion(t, cuando + (t.delegadoA ? ` · ${t.delegadoA}` : ''));
   }
-  // Siempre, además, el aviso adentro de la app (en iPhone es el único que funciona)
+  // Siempre, además, el aviso adentro de la app, por si la notificación no sale
   aviso(`🔔 ${t.titulo}`, 'Ver', () => abrirEditar(t.id));
   navigator.vibrate?.(200);
 }
@@ -1800,6 +1812,17 @@ function iniciar() {
   conectarEventos();
   irA(vista);
 
+  // Al tocar una notificación, el service worker avisa qué tarea abrir: por mensaje si la app
+  // ya estaba abierta, o con #tarea=<id> en la dirección si tuvo que abrirla
+  navigator.serviceWorker?.addEventListener('message', e => {
+    if (e.data?.abrirTarea) abrirEditar(e.data.abrirTarea);
+  });
+  const deEnlace = location.hash.match(/^#tarea=(.+)$/);
+  if (deEnlace) {
+    history.replaceState(null, '', location.pathname);
+    abrirEditar(decodeURIComponent(deEnlace[1]));
+  }
+
   // Recordatorios: uno ya, y después cada 30 segundos. De paso, si cambió el día, se redibuja.
   let ultimoDia = hoyISO();
   revisarRecordatorios();
@@ -1809,13 +1832,21 @@ function iniciar() {
   }, 30000);
 
   // Primera vez: pedir permiso de notificaciones. Se intenta al abrir, y si el navegador
-  // exige un gesto del usuario, se vuelve a pedir en el primer toque.
+  // exige un gesto del usuario, se vuelve a pedir en el primer toque. Tiene que ser 'click' y
+  // no 'pointerdown': en pantallas táctiles el pointerdown no cuenta como gesto, y el iPhone
+  // rechaza el pedido sin mostrar nada.
   if (hayNotificaciones() && !estado.ajustes.permisoPedido && Notification.permission === 'default') {
     pedirPermiso(true);
-    document.addEventListener('pointerdown', () => {
+    document.addEventListener('click', () => {
       if (Notification.permission === 'default') pedirPermiso(true);
     }, { once: true });
   }
+}
+
+// PWA: el service worker guarda la app para abrirla sin internet y muestra las notificaciones.
+// Solo existe servida por http(s); abriendo el archivo local no se registra y la app anda igual.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(err => console.warn('Sin service worker', err));
 }
 
 // El tema se aplica antes que nada, así el login también sale en claro u oscuro

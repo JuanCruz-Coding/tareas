@@ -46,6 +46,17 @@ izquierda y "Tres para hoy" a la derecha, fijo al hacer scroll. Desde 992 px, el
 calendario muestra el título de cada tarea en vez de solo el punto; el corte está en el CSS y
 en `pantallaAncha` del JavaScript, y **tienen que coincidir**. En el celular no cambió nada.
 
+**Es una PWA** (2026-09-23): `manifest.webmanifest`, `sw.js` y los íconos de 192 y 512 px.
+Sirve para instalarla en la PC y en Android, para abrir sin conexión, y porque es la única
+forma de tener notificaciones en Android y en el iPhone, donde `new Notification()` no existe.
+Por eso las notificaciones salen por `registration.showNotification()`, con
+`new Notification()` como plan B para el archivo abierto en local, donde no hay service worker.
+El service worker trae **primero de la red las páginas y primero de lo guardado el resto**: así
+un cambio publicado llega solo, sin la trampa típica de la PWA que se queda con la versión
+vieja. Las librerías del CDN llevan la versión en la URL, así que guardarlas no las
+desactualiza. Tocar una notificación abre esa tarea: por mensaje si la app ya está abierta, o
+con `#tarea=<id>` en la dirección si hay que abrirla.
+
 **La barra de estado del iPhone es `default` y no `black-translucent`.** Con la translúcida,
 iOS pinta el reloj en blanco, que sobre el fondo claro no se lee.
 
@@ -65,16 +76,41 @@ inicio", que se probaron solo emulados.
 
 ## Trampas conocidas
 
-**En iPhone no hay notificaciones del sistema.** iOS no deja que una página común las mande:
-solo lo permite a una web app con service worker, y esta app no tiene. En el iPhone el aviso
-sale solo dentro de la app abierta. En la PC funcionan, pero solo con la pestaña abierta.
+~~**En iPhone no hay notificaciones del sistema.** iOS no deja que una página común las mande:
+solo lo permite a una web app con service worker, y esta app no tiene.~~ Dejó de ser cierto el
+2026-09-23, cuando la app pasó a ser PWA (ver abajo).
+
+**Las notificaciones solo salen con la app abierta**, en todos lados. Para avisar con la app
+cerrada hace falta Web Push, y eso requiere un servidor que las mande; esta app no tiene. En
+el iPhone, además, solo funcionan si la app se abre desde la pantalla de inicio y no desde
+Safari. Y el permiso tiene que pedirse con un toque: por eso el primer pedido automático
+escucha `click` y no `pointerdown`, que en pantalla táctil no cuenta como gesto y el iPhone
+rechaza sin mostrar nada.
+
+**En el iPhone, Safari y la app de la pantalla de inicio no comparten datos.** iOS le da a la
+app instalada su propio `localStorage`. Si se usó primero en Safari y después se agregó a la
+pantalla de inicio, la app arranca con los ejemplos: hay que exportar desde Safari e importar
+en la app.
+
+**Si se cambia `sw.js` o su lista `PRECARGA`, hay que subir el número de `CACHE`**
+(`tareas-v1` → `tareas-v2`). Si no, los dispositivos siguen con la versión vieja del service
+worker. Los cambios a `tareas.html` **no** lo necesitan: las páginas van primero a la red, así
+que llegan solas en cuanto hay conexión.
+
+**En la PC de desarrollo, el Chrome headless no puede usar CacheStorage.** Falla hasta desde
+una página común ("Unexpected internal error"), y al perfil de prueba le aparece una extensión
+instalada por política, que parece del antivirus. Es algo de esa máquina y no de la app: la
+misma prueba en Edge headless pasa entera. Para probar la PWA se usó Edge; el script quedó en
+el scratchpad de la sesión del 2026-09-23 y no en el repo. El panel de navegador de Claude
+tampoco sirve para esto: no registra service workers.
 
 **Los datos dependen de la dirección.** `localStorage` es por origen
 (`juancruz-coding.github.io`). Si cambia el usuario de GitHub, o la app se abre desde otra
 dirección (el archivo local, otro hosting), arranca vacía. Los datos no se pierden, pero
 quedan en la dirección vieja. Antes de mudarla hay que exportar.
 
-**La primera carga necesita internet**, porque las librerías vienen de un CDN.
+**La primera carga necesita internet**, porque las librerías vienen de un CDN. Desde la segunda,
+el service worker las tiene guardadas y la app abre sin conexión.
 
 **La recurrencia mensual se corre en los meses cortos.** Una tarea del 31 pasa al 28 en
 febrero y de ahí en adelante sigue en el 28, porque no se guarda el día original.
